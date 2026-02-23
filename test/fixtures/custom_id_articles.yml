@@ -1,0 +1,24 @@
+base_1:
+  title: "Custom ID Article"
+  content: "Testing custom ID ranges"
+  author: "Test Author"
+  status: "published"
+  category: "test"
+  tags:
+    - "test"
+    - "custom-id"
+  published_at: 2026-01-01T14:18:33Z
+  view_count: 0
+  id: 102370
+base_2:
+  title: "Custom ID Article"
+  content: "Testing custom ID ranges"
+  author: "Test Author"
+  status: "published"
+  category: "test"
+  tags:
+    - "test"
+    - "custom-id"
+  published_at: 2026-01-01T14:18:33Z
+  view_count: 0
+  id: 102632

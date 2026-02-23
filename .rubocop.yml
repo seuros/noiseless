@@ -1,0 +1,65 @@
+AllCops:
+  TargetRubyVersion: 3.4
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - bin/**/*
+    - vendor/**/*
+    - test/dummy/tmp/**/*
+    - test/dummy/db/schema.rb
+
+Style/Documentation:
+  Enabled: false
+
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Style/FrozenStringLiteralComment:
+  Enabled: true
+
+Metrics/BlockLength:
+  Exclude:
+    - test/**/*
+    - "*.gemspec"
+
+Metrics/ClassLength:
+  Enabled: false
+
+Metrics/ModuleLength:
+  Enabled: false
+
+Metrics/AbcSize:
+  Enabled: false
+
+Metrics/MethodLength:
+  Enabled: false
+
+Metrics/CyclomaticComplexity:
+  Enabled: false
+
+Metrics/PerceivedComplexity:
+  Enabled: false
+
+Style/OpenStructUse:
+  Exclude:
+    - test/**/*
+
+Layout/LineLength:
+  Max: 150
+  Exclude:
+    - test/vials/**/*
+    - "*.gemspec"
+
+Naming/MethodParameterName:
+  MinNameLength: 2
+  AllowedNames:
+    - k
+
+Naming/PredicatePrefix:
+  Enabled: false
+
+Style/FormatString:
+  Enabled: false
+
+Metrics/ParameterLists:
+  Enabled: false

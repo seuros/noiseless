@@ -1,0 +1,125 @@
+# frozen_string_literal: true
+
+require "test_helper"
+
+# Demonstration of Noiseless::TestCase usage
+# This would typically be in test/search/product_test.rb
+# 
+# SKIP: This is a demonstration file showing TestCase usage patterns
+# It requires actual search models to be implemented which are not present in test suite
+module Search
+end
+
+class Search::ProductTest < Noiseless::TestCase
+  skip "Demonstration test - requires actual ProductSearch model implementation"
+  # 🧪 Each test method automatically gets its own VCR cassette
+  # Cassette: search/product/basic_name_search.yml
+  def test_basic_name_search
+    # This search would be recorded to VCR automatically
+    search = ProductSearch.new.match(:name, "Ruby Programming")
+    
+    # Test assertions work seamlessly
+    assert_search_results(search, message: "Should find Ruby programming books")
+  end
+
+  # Cassette: search/product/filtered_search.yml  
+  def test_filtered_search
+    search = ProductSearch.new
+      .match(:name, "laptop")
+      .filter(:category, "electronics")
+      .filter(:in_stock, true)
+    
+    # Enhanced assertions for search results
+    assert_search_results(search)
+    
+    # Performance assertions
+    assert_search_performance(search, 500) do
+      search.execute
+    end
+  end
+
+  # Cassette: search/product/empty_results.yml
+  def test_empty_results
+    search = ProductSearch.new.match(:name, "nonexistent_product_xyz")
+    
+    assert_search_empty(search, "Should return no results for nonexistent product")
+  end
+
+  # Override VCR options for specific test
+  def test_with_custom_vcr_options
+    noiseless_cassette(record: :new_episodes) do
+      search = ProductSearch.new.featured.limit(5)
+      results = search.execute
+      
+      assert results.respond_to?(:size)
+    end
+  end
+
+  # Test debug utilities
+  def test_debug_utilities
+    search = ProductSearch.new
+      .match(:name, "test")
+      .filter(:status, "active")
+      .sort(:price, :asc)
+      .paginate(1, 10)
+    
+    # Debug the generated query
+    print_query(search)
+    
+    # Generate curl command for manual testing
+    # print_curl(search) # Uncomment to see curl output
+    
+    assert search.to_ast.bool.must.size > 0
+  end
+
+  # Test with seeded data
+  def test_with_seeded_data
+    # Seed some test data (only in non-VCR mode)
+    test_products = [
+      { id: 1, name: "Ruby Book", category: "books", price: 29.99 },
+      { id: 2, name: "Python Guide", category: "books", price: 34.99 },
+      { id: 3, name: "Laptop", category: "electronics", price: 999.99 }
+    ]
+    
+    seed_data!("test_products", test_products)
+    
+    # Now search for the seeded data
+    search = ProductSearch.new.filter(:category, "books")
+    
+    # Should find our seeded books
+    assert_search_results(search, message: "Should find seeded books")
+  end
+
+  # Test performance expectations
+  def test_search_performance
+    search = ProductSearch.new.match(:name, "performance test")
+    
+    # Assert search completes within 100ms
+    assert_search_performance(search, 100) do
+      search.execute
+    end
+  end
+
+  # Test with index reset
+  def test_with_clean_index
+    # Reset the index before this test
+    reset_index!("test_products")
+    
+    # Verify empty results after reset
+    search = ProductSearch.new.match(:name, "anything")
+    assert_search_empty(search, "Index should be empty after reset")
+  end
+
+  private
+
+  # Mock ProductSearch class for testing
+  class ProductSearch < Noiseless::Model
+    index_name "test_products"
+    
+    def featured
+      filter(:featured, true)
+      sort(:featured_score, :desc)
+      self
+    end
+  end
+end

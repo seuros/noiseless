@@ -1,0 +1,36 @@
+# Example noiseless configuration
+development:
+  default: primary
+  connections:
+    primary:
+      adapter: elasticsearch
+      hosts:
+        - http://localhost:9201
+    opensearch:
+      adapter: open_search
+      hosts:
+        - http://localhost:9202
+    typesense:
+      adapter: typesense
+      hosts:
+        - http://localhost:8109
+    postgresql:
+      adapter: postgresql
+
+test:
+  default: primary
+  connections:
+    primary:
+      adapter: elasticsearch
+      hosts:
+        - http://<%= ENV['ELASTICSEARCH_HOST'] || 'localhost' %>:<%= ENV['ELASTICSEARCH_PORT'] || 9200 %>
+    opensearch:
+      adapter: open_search
+      hosts:
+        - http://<%= ENV['OPENSEARCH_HOST'] || 'localhost' %>:<%= ENV['OPENSEARCH_PORT'] || 9201 %>
+    typesense:
+      adapter: typesense
+      hosts:
+        - http://<%= ENV['TYPESENSE_HOST'] || 'localhost' %>:<%= ENV['TYPESENSE_PORT'] || 8108 %>
+    postgresql:
+      adapter: postgresql

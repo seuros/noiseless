@@ -1,0 +1,17 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: 5
+  timeout: 5000
+  host: <%= ENV.fetch('PGHOST', '127.0.0.1') %>
+  port: <%= ENV.fetch('PGPORT', '5432') %>
+  username: <%= ENV.fetch('PGUSER', 'postgres') %>
+  password: <%= ENV.fetch('PGPASSWORD', 'postgres') %>
+
+development:
+  <<: *default
+  database: noiseless_dummy_development
+
+test:
+  <<: *default
+  database: <%= ENV.fetch('PGDATABASE', 'noiseless_test') %>

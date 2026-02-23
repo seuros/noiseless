@@ -1,0 +1,13 @@
+# frozen_string_literal: true
+
+require_relative "config/application"
+
+Rails.application.load_tasks
+
+# Load tasks from the parent gem
+load File.expand_path("../../Rakefile", __dir__) if File.exist?(File.expand_path("../../Rakefile", __dir__))
+
+# Add test task
+task :test do
+  Dir.glob("../../test/**/*_test.rb").each { |f| require f }
+end

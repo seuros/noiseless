@@ -1,0 +1,13 @@
+Gemfile.lock
+
+# Secrets & Environment
+.env*
+!.env.example
+test/dummy/tmp/local_secret.txt
+
+# Test artifacts
+test/coverage/
+test/dummy/log/*.log
+test/dummy/tmp/*
+!test/dummy/tmp/.keep
+!test/dummy/tmp/storage/.keep

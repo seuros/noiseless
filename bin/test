@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+# Default to the docker-compose port mapping in this repository.
+# Allow callers to override any value via environment variables.
+: "${ELASTICSEARCH_HOST:=localhost}"
+: "${ELASTICSEARCH_PORT:=9201}"
+: "${OPENSEARCH_HOST:=localhost}"
+: "${OPENSEARCH_PORT:=9202}"
+: "${TYPESENSE_HOST:=localhost}"
+: "${TYPESENSE_PORT:=8109}"
+
+export ELASTICSEARCH_HOST
+export ELASTICSEARCH_PORT
+export OPENSEARCH_HOST
+export OPENSEARCH_PORT
+export TYPESENSE_HOST
+export TYPESENSE_PORT
+
+if [ "$#" -eq 0 ]; then
+  bundle exec rake test:prepare test
+else
+  bundle exec rake test:prepare
+  bundle exec bin/rails test "$@"
+fi

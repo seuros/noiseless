@@ -1,0 +1,90 @@
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.2.2
+    container_name: elasticsearch
+    environment:
+      - node.name=elasticsearch
+      - cluster.name=es-docker-cluster
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9201:9200"
+      - "9301:9300"
+    networks:
+      - search-network
+
+  opensearch:
+    image: opensearchproject/opensearch:3
+    container_name: opensearch
+    environment:
+      - cluster.name=opensearch-cluster
+      - node.name=opensearch
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "DISABLE_INSTALL_DEMO_CONFIG=true"
+      - "DISABLE_SECURITY_PLUGIN=true"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    ports:
+      - "9202:9200"
+      - "9302:9300"
+    networks:
+      - search-network
+
+  typesense:
+    image: typesense/typesense:30.1
+    container_name: typesense
+    environment:
+      - TYPESENSE_DATA_DIR=/data
+      - TYPESENSE_API_KEY=your-api-key-here
+      - TYPESENSE_ENABLE_CORS=true
+    volumes:
+      - typesense_data:/data
+    ports:
+      - "8109:8108"
+    command: '--data-dir /data --api-key=your-api-key-here --listen-port 8108 --enable-cors'
+    networks:
+      - search-network
+
+  postgres:
+    image: ghcr.io/seuros/postgis-with-extensions:18
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=noiseless_dev
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    ports:
+      - "5432:5432"
+    networks:
+      - search-network
+
+volumes:
+  elasticsearch_data:
+    driver: local
+  opensearch_data:
+    driver: local
+  typesense_data:
+    driver: local
+  postgres_data:
+    driver: local
+
+networks:
+  search-network:
+    driver: bridge

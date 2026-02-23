@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (Ruby ${{ matrix.ruby }}, Rails ${{ matrix.rails-version }})
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental || matrix.rails-version == 'dev' }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby: ["3.4", "4.0"]
+        rails-version: ["~> 8.1.1", "dev"]
+        include:
+          - ruby: "4.0"
+            experimental: true
+
+    env:
+      RAILS_ENV: test
+      RAILS_VERSION: ${{ matrix.rails-version }}
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      TYPESENSE_API_KEY: xyz
+
+    services:
+      postgres:
+        image: ghcr.io/seuros/postgis-with-extensions:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: noiseless_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432/tcp
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:9.2.2
+        ports:
+          - 9200/tcp
+        env:
+          discovery.type: single-node
+          ES_JAVA_OPTS: "-Xms256m -Xmx256m"
+          xpack.security.enabled: "false"
+          xpack.security.enrollment.enabled: "false"
+        options: >-
+          --health-cmd "curl -s http://localhost:9200/_cluster/health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+      opensearch:
+        image: opensearchproject/opensearch:3
+        ports:
+          - 9200/tcp
+        env:
+          discovery.type: single-node
+          OPENSEARCH_JAVA_OPTS: "-Xms256m -Xmx256m"
+          DISABLE_INSTALL_DEMO_CONFIG: "true"
+          DISABLE_SECURITY_PLUGIN: "true"
+        options: >-
+          --workdir /usr/share/opensearch
+          --health-cmd "curl -s http://localhost:9200/_cluster/health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Start Typesense
+        run: |
+          docker run -d \
+            -p 8108:8108 \
+            --name typesense \
+            -v /tmp/typesense-data:/data \
+            typesense/typesense:30.1 \
+            --api-key=xyz \
+            --data-dir=/data \
+            --enable-cors
+
+      - name: Wait for Typesense
+        run: |
+          until curl -s http://localhost:8108/health | grep -q '"ok":true'; do
+            sleep 1
+          done
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+        env:
+          BUNDLE_FORCE_RUBY_PLATFORM: "true"
+
+      - name: Create and migrate test database
+        env:
+          PGHOST: localhost
+          PGPORT: ${{ job.services.postgres.ports[5432] }}
+          DATABASE_URL: postgresql://postgres:postgres@localhost:${{ job.services.postgres.ports[5432] }}/noiseless_test
+        run: |
+          cd test/dummy
+          bin/rails db:prepare
+
+      - name: Run tests
+        env:
+          PGHOST: localhost
+          PGPORT: ${{ job.services.postgres.ports[5432] }}
+          DATABASE_URL: postgresql://postgres:postgres@localhost:${{ job.services.postgres.ports[5432] }}/noiseless_test
+          ELASTICSEARCH_HOST: localhost
+          ELASTICSEARCH_PORT: ${{ job.services.elasticsearch.ports[9200] }}
+          OPENSEARCH_HOST: localhost
+          OPENSEARCH_PORT: ${{ job.services.opensearch.ports[9200] }}
+          TYPESENSE_HOST: localhost
+          TYPESENSE_PORT: 8108
+        run: bundle exec rake test
