@@ -16,7 +16,7 @@ module Noiseless
       end
 
       # Update runtime tracking for Rails
-      add_to_runtime(Time.current - start_time) if Rails.application
+      add_to_runtime(Time.current - start_time) if defined?(Rails) && Rails.respond_to?(:application) && Rails.application
 
       result
     end

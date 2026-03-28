@@ -1,6 +1,6 @@
 # Noiseless
 
-Async-first search abstraction for Ruby/Rails with multi-backend support (OpenSearch, Elasticsearch, Typesense, PostgreSQL).
+Async-first search abstraction for Rails with multi-backend support (OpenSearch, Elasticsearch, Typesense, PostgreSQL).
 
 ## Features
 
@@ -14,10 +14,10 @@ Async-first search abstraction for Ruby/Rails with multi-backend support (OpenSe
 ## Installation
 
 ```ruby
-gem 'noiseless'
+gem "noiseless"
 ```
 
-Requires Ruby >= 3.4 and Rails >= 8.1.
+`noiseless` is a Rails gem. It requires Ruby >= 3.4 and Rails >= 8.1.
 
 ## Configuration
 
@@ -180,14 +180,21 @@ end
 ### Running Tests Locally
 
 ```bash
-docker compose up -d
+docker compose up -d postgres elasticsearch opensearch typesense
 bin/test
 ```
 
-Default ports match `docker-compose.yml`: Elasticsearch `:9201`, OpenSearch `:9202`, Typesense `:8109`. Override via env vars:
+`bin/test` expects all four local services from `docker-compose.yml`, including PostgreSQL on `:5432`.
+Default ports match `docker-compose.yml`: PostgreSQL `:5432`, Elasticsearch `:9201`, OpenSearch `:9202`, Typesense `:8109`. Override via env vars:
 
 ```bash
 ELASTICSEARCH_PORT=9200 OPENSEARCH_PORT=9201 TYPESENSE_PORT=8108 bin/test
+```
+
+For a release smoke test that does not require the dummy app or local services:
+
+```bash
+bundle exec rake release:check
 ```
 
 ## Debug Mode

@@ -179,7 +179,7 @@ module Noiseless
         def default_headers
           [
             ["accept", "application/json"],
-            ["user-agent", "Noiseless/0.0.0 (Ruby/#{RUBY_VERSION})"]
+            ["user-agent", "Noiseless/#{Noiseless::VERSION} (Ruby/#{RUBY_VERSION})"]
           ]
         end
       end

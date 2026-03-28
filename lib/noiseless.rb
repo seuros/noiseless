@@ -12,6 +12,7 @@ require "async"
 require "async/http/endpoint"
 require "async/http/client"
 require "async/pool"
+require_relative "noiseless/version"
 
 module Noiseless
   class Error < StandardError; end
@@ -23,7 +24,13 @@ module Noiseless
       @connections_config = {}
       @default_connection = :primary
       @default_adapter = :opensearch
-      @config_path = -> { Rails.root.join("config/noiseless.yml") }
+      @config_path = lambda do
+        if defined?(Rails) && Rails.respond_to?(:root) && Rails.root
+          Rails.root.join("config/noiseless.yml")
+        else
+          File.expand_path("config/noiseless.yml", Dir.pwd)
+        end
+      end
     end
   end
 
@@ -40,8 +47,10 @@ module Noiseless
     return unless File.exist?(path)
 
     # Use Rails config_for if available and using standard config path, otherwise use ActiveSupport's YAML with ERB
-    standard_path = Rails.root.join("config/noiseless.yml")
-    if Rails.application && path.to_s == standard_path.to_s
+    rails_available = defined?(Rails) && Rails.respond_to?(:application) && Rails.respond_to?(:root) && Rails.respond_to?(:env)
+    standard_path = rails_available ? Rails.root.join("config/noiseless.yml") : nil
+
+    if rails_available && Rails.application && path.to_s == standard_path.to_s
       # config_for already returns environment-specific config with ERB processed
       env_config = Rails.application.config_for(:noiseless)
     else
@@ -49,7 +58,8 @@ module Noiseless
       file_content = File.read(path)
       processed_content = ERB.new(file_content).result
       raw = YAML.safe_load(processed_content, aliases: true)
-      env_config = raw[Rails.env.to_s] || {}
+      environment = rails_available ? Rails.env.to_s : ENV.fetch("RAILS_ENV", "development")
+      env_config = raw[environment] || {}
     end
 
     config.default_connection = env_config["default"].to_sym if env_config && env_config["default"]
@@ -80,7 +90,7 @@ module Noiseless
   loader.ignore("#{__dir__}/noiseless/test_helper.rb")
   loader.ignore("#{__dir__}/noiseless/test_case.rb")
   loader.setup
-  loader.eager_load if Rails.env.test?
+  loader.eager_load if defined?(Rails) && Rails.respond_to?(:env) && Rails.env.test?
 
   # Manually require response classes since they're in a subdirectory
   require_relative "noiseless/response"

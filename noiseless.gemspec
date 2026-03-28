@@ -1,13 +1,15 @@
 # frozen_string_literal: true
 
+require_relative "lib/noiseless/version"
+
 Gem::Specification.new do |spec|
   spec.name          = "noiseless"
-  spec.version       = "0.0.0"
+  spec.version       = Noiseless::VERSION
   spec.authors     = ["Abdelkader Boudih"]
   spec.email       = ["terminale@gmail.com"]
 
-  spec.summary       = "Universal Ruby search abstraction with async-first multi-backend support"
-  spec.description   = "Noiseless is an ActiveRecord-style search adapter for Ruby. Supports multiple backends (Elasticsearch, OpenSearch, Typesense), asynchronous querying, and a clean DSL."
+  spec.summary       = "Async-first Rails search abstraction with multi-backend support"
+  spec.description   = "Noiseless is a Rails-focused, ActiveRecord-style search abstraction supporting Elasticsearch, OpenSearch, Typesense, and PostgreSQL with asynchronous querying and a chainable DSL."
   spec.homepage      = "https://github.com/seuros/noiseless"
   spec.license       = "BSD-3-Clause"
 
@@ -33,4 +35,5 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "sus-fixtures-benchmark", "~> 0.2"
   # rubocop:enable Gemspec/DevelopmentDependencies
   spec.metadata["rubygems_mfa_required"] = "true"
+  spec.metadata["source_code_uri"] = "https://github.com/seuros/noiseless"
 end
