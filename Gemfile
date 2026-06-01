@@ -2,7 +2,7 @@
 
 source "https://rubygems.org"
 
-# Specify your gem's dependencies in action_mcp.gemspec.
+# Specify your gem's dependencies in noiseless.gemspec.
 gemspec
 
 gem "rubocop", require: false
