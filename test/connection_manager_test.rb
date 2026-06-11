@@ -13,7 +13,7 @@ class ConnectionManagerTest < ActiveSupport::TestCase
     mock_adapter.expect :==, true, [mock_adapter]
 
     Noiseless::Adapters.stub :lookup, mock_adapter do
-      @connection_manager.register(:test, adapter: :elasticsearch, hosts: ["http://localhost:9200"])
+      @connection_manager.register(:test, adapter: :elasticsearch, hosts: ["http://localhost:9201"])
 
       client = @connection_manager.client(:test)
       assert_equal mock_adapter, client

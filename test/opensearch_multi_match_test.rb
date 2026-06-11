@@ -5,7 +5,7 @@ require "test_helper"
 class OpenSearchMultiMatchTest < ActiveSupport::TestCase
   def os_url
     host = ENV.fetch("OPENSEARCH_HOST", "localhost")
-    port = ENV.fetch("OPENSEARCH_PORT", "9201")
+    port = ENV.fetch("OPENSEARCH_PORT", "9202")
     "http://#{host}:#{port}"
   end
 

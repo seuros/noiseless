@@ -5,19 +5,19 @@ require "test_helper"
 class MultiEngineTest < ActiveSupport::TestCase
   def es_url
     host = ENV.fetch("ELASTICSEARCH_HOST", "localhost")
-    port = ENV.fetch("ELASTICSEARCH_PORT", "9200")
+    port = ENV.fetch("ELASTICSEARCH_PORT", "9201")
     "http://#{host}:#{port}"
   end
 
   def os_url
     host = ENV.fetch("OPENSEARCH_HOST", "localhost")
-    port = ENV.fetch("OPENSEARCH_PORT", "9201")
+    port = ENV.fetch("OPENSEARCH_PORT", "9202")
     "http://#{host}:#{port}"
   end
 
   def ts_url
     host = ENV.fetch("TYPESENSE_HOST", "localhost")
-    port = ENV.fetch("TYPESENSE_PORT", "8108")
+    port = ENV.fetch("TYPESENSE_PORT", "8109")
     "http://#{host}:#{port}"
   end
 
@@ -96,6 +96,16 @@ class MultiEngineTest < ActiveSupport::TestCase
     opensearch = Noiseless::Adapters::OpenSearch.new(hosts: [os_url])
     typesense = Noiseless::Adapters::Typesense.new(hosts: [ts_url])
 
+    # Searching a missing index now raises instead of returning an empty
+    # response, so the index must exist before querying it.
+    Sync do
+      [elasticsearch, opensearch].each do |adapter|
+        adapter.create_index("posts").wait
+      rescue Noiseless::RequestError
+        # index already exists from a previous run
+      end
+    end
+
     # Search returns Async::Task, need to wait for results
     es_task = elasticsearch.search(root_node)
     os_task = opensearch.search(root_node)
@@ -117,6 +127,14 @@ class MultiEngineTest < ActiveSupport::TestCase
 
     # Typesense should also have Response object interface
     assert_respond_to ts_response, :total
+  ensure
+    Sync do
+      [elasticsearch, opensearch].compact.each do |adapter|
+        adapter.delete_index("posts").wait
+      rescue Noiseless::RequestError
+        nil
+      end
+    end
   end
 
   test "connection manager loads all configured adapters" do

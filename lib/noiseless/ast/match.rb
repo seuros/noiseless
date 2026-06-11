@@ -2,14 +2,7 @@
 
 module Noiseless
   module AST
-    class Match < Node
-      attr_reader :field, :value
-
-      def initialize(field, value)
-        super()
-        @field = field
-        @value = value
-      end
+    class Match < FieldValueNode
     end
   end
 end

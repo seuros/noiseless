@@ -1,14 +1,13 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "es_compatible_execution"
 
 module Noiseless
   module Adapters
     module ExecutionModules
       module OpensearchExecution
-        def close
-          @clients&.each_value(&:close)
-        end
+        include EsCompatibleExecution
 
         private
 
@@ -18,43 +17,7 @@ module Noiseless
           body = JSON.generate(query_hash)
 
           response = post_request(path, body)
-          JSON.parse(response.read)
-        rescue StandardError => e
-          # Return empty response on error to maintain compatibility
-          {
-            took: 0,
-            timed_out: false,
-            _shards: { total: 0, successful: 0, skipped: 0, failed: 0 },
-            hits: {
-              total: { value: 0, relation: "eq" },
-              max_score: nil,
-              hits: []
-            },
-            error: {
-              type: e.class.name,
-              reason: e.message
-            }
-          }
-        ensure
-          response&.close
-        end
-
-        def execute_bulk(actions, **_opts)
-          # Build bulk request body
-          bulk_body = actions.map do |action|
-            if action[:index]
-              action_line = { index: { _index: action[:index][:_index], _id: action[:index][:_id] } }
-              data_line = action[:index][:data]
-              "#{JSON.generate(action_line)}\n#{JSON.generate(data_line)}\n"
-            else
-              "#{JSON.generate(action)}\n"
-            end
-          end.join
-
-          response = post_request("/_bulk", bulk_body, content_type: "application/x-ndjson")
-          JSON.parse(response.read)
-        rescue StandardError => e
-          { items: [], errors: true, error: { type: e.class.name, reason: e.message } }
+          parse_json_response!(response, error_class: Noiseless::SearchError, context: "search #{index_path}")
         ensure
           response&.close
         end
@@ -65,46 +28,7 @@ module Noiseless
           body[:settings] = settings if settings
 
           response = put_request("/#{index_name}", body.any? ? JSON.generate(body) : nil)
-          JSON.parse(response.read)
-        rescue StandardError => e
-          { acknowledged: false, error: { type: e.class.name, reason: e.message } }
-        ensure
-          response&.close
-        end
-
-        def execute_delete_index(index_name, **_opts)
-          response = delete_request("/#{index_name}")
-          JSON.parse(response.read)
-        rescue StandardError => e
-          { acknowledged: false, error: { type: e.class.name, reason: e.message } }
-        ensure
-          response&.close
-        end
-
-        def execute_refresh_index(index_name)
-          response = post_request("/#{index_name}/_refresh", nil)
-          JSON.parse(response.read)
-        rescue StandardError => e
-          {
-            "_shards" => {
-              "total" => 0,
-              "successful" => 0,
-              "failed" => 0
-            },
-            "error" => {
-              "type" => e.class.name,
-              "reason" => e.message
-            }
-          }
-        ensure
-          response&.close
-        end
-
-        def execute_index_exists?(index_name)
-          response = head_request("/#{index_name}")
-          response.success?
-        rescue StandardError
-          false
+          parse_json_response!(response, context: "create index #{index_name}")
         ensure
           response&.close
         end
@@ -114,38 +38,7 @@ module Noiseless
           body = JSON.generate(document)
 
           response = put_request(path, body)
-          JSON.parse(response.read)
-        rescue StandardError => e
-          { _index: index, _id: id, result: "error", error: { type: e.class.name, reason: e.message } }
-        ensure
-          response&.close
-        end
-
-        def execute_update_document(index, id, changes, **_opts)
-          body = JSON.generate(doc: changes)
-
-          response = post_request("/#{index}/_update/#{id}", body)
-          JSON.parse(response.read)
-        rescue StandardError => e
-          { _index: index, _id: id, result: "error", error: { type: e.class.name, reason: e.message } }
-        ensure
-          response&.close
-        end
-
-        def execute_delete_document(index, id, **_opts)
-          response = delete_request("/#{index}/_doc/#{id}")
-          JSON.parse(response.read)
-        rescue StandardError => e
-          { _index: index, _id: id, result: "error", error: { type: e.class.name, reason: e.message } }
-        ensure
-          response&.close
-        end
-
-        def execute_document_exists?(index, id)
-          response = head_request("/#{index}/_doc/#{id}")
-          response.success?
-        rescue StandardError
-          false
+          parse_json_response!(response, context: "index document #{index}/#{id}")
         ensure
           response&.close
         end
@@ -178,13 +71,7 @@ module Noiseless
           body = JSON.generate(enhanced_query)
 
           response = post_request("/_search", body)
-          JSON.parse(response.read)
-        rescue StandardError => e
-          {
-            pit_id: pit_id,
-            error: { type: e.class.name, reason: e.message },
-            hits: { total: { value: 0 }, hits: [] }
-          }
+          parse_json_response!(response, error_class: Noiseless::SearchError, context: "point-in-time search")
         ensure
           response&.close
         end
@@ -198,12 +85,7 @@ module Noiseless
           body = JSON.generate(template_query)
 
           response = post_request("/_search/template", body)
-          JSON.parse(response.read)
-        rescue StandardError => e
-          {
-            error: { type: e.class.name, reason: e.message },
-            hits: { total: { value: 0 }, hits: [] }
-          }
+          parse_json_response!(response, error_class: Noiseless::SearchError, context: "search template #{template_id}")
         ensure
           response&.close
         end
@@ -320,56 +202,6 @@ module Noiseless
           false
         ensure
           response&.close
-        end
-
-        # HTTP helpers using Async::HTTP with connection pooling
-        def get_request(path)
-          with_client do |client|
-            client.get(path, default_headers)
-          end
-        end
-
-        def post_request(path, body, content_type: "application/json")
-          headers = body ? default_headers + [["content-type", content_type]] : default_headers
-
-          with_client do |client|
-            client.post(path, headers, body)
-          end
-        end
-
-        def put_request(path, body, content_type: "application/json")
-          headers = body ? default_headers + [["content-type", content_type]] : default_headers
-
-          with_client do |client|
-            client.put(path, headers, body)
-          end
-        end
-
-        def delete_request(path)
-          with_client do |client|
-            client.delete(path, default_headers)
-          end
-        end
-
-        def head_request(path)
-          with_client do |client|
-            client.head(path, default_headers)
-          end
-        end
-
-        def with_client
-          # Select a random host for load balancing
-          host = @hosts.sample
-          client = @clients[host]
-
-          yield(client)
-        end
-
-        def default_headers
-          [
-            ["accept", "application/json"],
-            ["user-agent", "Noiseless/#{Noiseless::VERSION} (Ruby/#{RUBY_VERSION})"]
-          ]
         end
       end
     end

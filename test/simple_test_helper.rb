@@ -6,11 +6,11 @@ require "noiseless"
 
 # Service hosts from environment (for CI) or localhost (for local dev)
 ES_HOST = ENV.fetch("ELASTICSEARCH_HOST", "localhost")
-ES_PORT = ENV.fetch("ELASTICSEARCH_PORT", "9200")
+ES_PORT = ENV.fetch("ELASTICSEARCH_PORT", "9201")
 OS_HOST = ENV.fetch("OPENSEARCH_HOST", "localhost")
-OS_PORT = ENV.fetch("OPENSEARCH_PORT", "9201")
+OS_PORT = ENV.fetch("OPENSEARCH_PORT", "9202")
 TS_HOST = ENV.fetch("TYPESENSE_HOST", "localhost")
-TS_PORT = ENV.fetch("TYPESENSE_PORT", "8108")
+TS_PORT = ENV.fetch("TYPESENSE_PORT", "8109")
 
 # Configure Noiseless for tests
 Noiseless.configure do |config|

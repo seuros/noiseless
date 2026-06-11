@@ -23,14 +23,14 @@ test:
     primary:
       adapter: elasticsearch
       hosts:
-        - http://<%= ENV['ELASTICSEARCH_HOST'] || 'localhost' %>:<%= ENV['ELASTICSEARCH_PORT'] || 9200 %>
+        - http://<%= ENV['ELASTICSEARCH_HOST'] || 'localhost' %>:<%= ENV['ELASTICSEARCH_PORT'] || 9201 %>
     opensearch:
       adapter: open_search
       hosts:
-        - http://<%= ENV['OPENSEARCH_HOST'] || 'localhost' %>:<%= ENV['OPENSEARCH_PORT'] || 9201 %>
+        - http://<%= ENV['OPENSEARCH_HOST'] || 'localhost' %>:<%= ENV['OPENSEARCH_PORT'] || 9202 %>
     typesense:
       adapter: typesense
       hosts:
-        - http://<%= ENV['TYPESENSE_HOST'] || 'localhost' %>:<%= ENV['TYPESENSE_PORT'] || 8108 %>
+        - http://<%= ENV['TYPESENSE_HOST'] || 'localhost' %>:<%= ENV['TYPESENSE_PORT'] || 8109 %>
     postgresql:
       adapter: postgresql

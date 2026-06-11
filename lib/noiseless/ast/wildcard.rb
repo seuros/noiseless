@@ -2,14 +2,7 @@
 
 module Noiseless
   module AST
-    class Wildcard < Node
-      attr_reader :field, :value
-
-      def initialize(field, value)
-        super()
-        @field = field
-        @value = value
-      end
+    class Wildcard < FieldValueNode
     end
   end
 end

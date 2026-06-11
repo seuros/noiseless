@@ -5,7 +5,7 @@ require "test_helper"
 class AstToHashTest < ActiveSupport::TestCase
   def es_url
     host = ENV.fetch("ELASTICSEARCH_HOST", "localhost")
-    port = ENV.fetch("ELASTICSEARCH_PORT", "9200")
+    port = ENV.fetch("ELASTICSEARCH_PORT", "9201")
     "http://#{host}:#{port}"
   end
 
