@@ -4,12 +4,27 @@ require_relative "test_helper"
 require_relative "dummy/app/models/article"
 
 class IntegrationTest < ActiveSupport::TestCase
+  # Dedicated index so seeding here can't clash with the mapping other tests
+  # create for "articles" (the published_at sort needs a date field).
+  TEST_INDEX = "noiseless_integration_articles"
+
   def setup
     @bulk_data = [
-      { index: { _index: "articles", _id: "1", data: { title: "Test", content: "Test content" } } },
-      { index: { _index: "articles", _id: "2", data: { title: "Another", content: "More content" } } }
+      { index: { _index: TEST_INDEX, _id: "1", data: { title: "Test", content: "Test content", published_at: "2024-01-01T00:00:00Z" } } },
+      { index: { _index: TEST_INDEX, _id: "2", data: { title: "Another", content: "More content", published_at: "2024-01-02T00:00:00Z" } } }
     ]
     @search_model = Article::SearchFiction
+  end
+
+  def teardown
+    Sync do
+      [Noiseless::Adapters::Elasticsearch.new(hosts: [es_url]),
+       Noiseless::Adapters::OpenSearch.new(hosts: [os_url])].each do |adapter|
+        adapter.delete_index(TEST_INDEX).wait
+      rescue Noiseless::RequestError
+        # index was not created by this test
+      end
+    end
   end
 
   def test_base_adapter_async_interface
@@ -74,19 +89,16 @@ class IntegrationTest < ActiveSupport::TestCase
   def assert_async_opensearch_features(adapter)
     match_ast = build_match_query("search", "title")
 
-    begin
-      pit_task = adapter.point_in_time_search(match_ast, pit_id: "test_pit_id")
-      assert_kind_of(Hash, Sync { pit_task.wait }) if pit_task.is_a?(Async::Task)
-    rescue NoMethodError
-      # Point-in-time search is optional; ignore if not implemented in test context
-    end
+    # The PIT id and template id are bogus, so the backend rejects them.
+    # Errors are no longer swallowed into empty responses, so the tasks
+    # must surface the failure as a SearchError when awaited.
+    pit_task = adapter.point_in_time_search(match_ast, pit_id: "test_pit_id")
+    assert_kind_of Async::Task, pit_task
+    assert_raises(Noiseless::SearchError) { Sync { pit_task.wait } }
 
-    begin
-      template_task = adapter.search_template(template_id: "test_template", params: { query: "test" })
-      assert_kind_of(Hash, Sync { template_task.wait }) if template_task.is_a?(Async::Task)
-    rescue NoMethodError
-      # Search templates are optional; ignore if not implemented in test context
-    end
+    template_task = adapter.search_template(template_id: "test_template", params: { query: "test" })
+    assert_kind_of Async::Task, template_task
+    assert_raises(Noiseless::SearchError) { Sync { template_task.wait } }
   end
 
   # Helper methods to build AST nodes
@@ -94,7 +106,7 @@ class IntegrationTest < ActiveSupport::TestCase
     match = Noiseless::AST::Match.new(field, value)
     bool_node = Noiseless::AST::Bool.new(must: [match], filter: [])
     Noiseless::AST::Root.new(
-      indexes: ["articles"],
+      indexes: [TEST_INDEX],
       bool: bool_node,
       sort: [],
       paginate: nil
@@ -105,7 +117,7 @@ class IntegrationTest < ActiveSupport::TestCase
     multi_match = Noiseless::AST::MultiMatch.new(query, fields)
     bool_node = Noiseless::AST::Bool.new(must: [multi_match], filter: [])
     Noiseless::AST::Root.new(
-      indexes: ["articles"],
+      indexes: [TEST_INDEX],
       bool: bool_node,
       sort: [],
       paginate: nil
@@ -120,7 +132,7 @@ class IntegrationTest < ActiveSupport::TestCase
     ]
     bool_node = Noiseless::AST::Bool.new(must: [match], filter: filters)
     Noiseless::AST::Root.new(
-      indexes: ["articles"],
+      indexes: [TEST_INDEX],
       bool: bool_node,
       sort: [],
       paginate: nil
@@ -132,7 +144,7 @@ class IntegrationTest < ActiveSupport::TestCase
     bool_node = Noiseless::AST::Bool.new(must: [match], filter: [])
     paginate = Noiseless::AST::Paginate.new(page, per_page)
     Noiseless::AST::Root.new(
-      indexes: ["articles"],
+      indexes: [TEST_INDEX],
       bool: bool_node,
       sort: [],
       paginate: paginate
@@ -144,7 +156,7 @@ class IntegrationTest < ActiveSupport::TestCase
     bool_node = Noiseless::AST::Bool.new(must: [match], filter: [])
     sort_node = Noiseless::AST::Sort.new(sort_field, direction)
     Noiseless::AST::Root.new(
-      indexes: ["articles"],
+      indexes: [TEST_INDEX],
       bool: bool_node,
       sort: [sort_node],
       paginate: nil
@@ -153,19 +165,19 @@ class IntegrationTest < ActiveSupport::TestCase
 
   def es_url
     host = ENV.fetch("ELASTICSEARCH_HOST", "localhost")
-    port = ENV.fetch("ELASTICSEARCH_PORT", "9200")
+    port = ENV.fetch("ELASTICSEARCH_PORT", "9201")
     "http://#{host}:#{port}"
   end
 
   def os_url
     host = ENV.fetch("OPENSEARCH_HOST", "localhost")
-    port = ENV.fetch("OPENSEARCH_PORT", "9201")
+    port = ENV.fetch("OPENSEARCH_PORT", "9202")
     "http://#{host}:#{port}"
   end
 
   def ts_url
     host = ENV.fetch("TYPESENSE_HOST", "localhost")
-    port = ENV.fetch("TYPESENSE_PORT", "8108")
+    port = ENV.fetch("TYPESENSE_PORT", "8109")
     "http://#{host}:#{port}"
   end
 end

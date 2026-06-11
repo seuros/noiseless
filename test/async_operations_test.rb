@@ -6,8 +6,19 @@ require "async"
 class AsyncOperationsTest < ActiveSupport::TestCase
   def setup
     host = ENV.fetch("ELASTICSEARCH_HOST", "localhost")
-    port = ENV.fetch("ELASTICSEARCH_PORT", "9200")
+    port = ENV.fetch("ELASTICSEARCH_PORT", "9201")
     @adapter = Noiseless::Adapters::Elasticsearch.new(hosts: ["http://#{host}:#{port}"])
+    # Seed the index/document so search, update and delete operations have a
+    # target, and drop any test_index left behind by a crashed run so
+    # create_index doesn't fail with resource_already_exists.
+    Sync do
+      @adapter.index_document(index: "test", id: 1, document: { title: "test" }).wait
+      begin
+        @adapter.delete_index("test_index").wait
+      rescue Noiseless::RequestError
+        # no leftover index
+      end
+    end
   end
 
   def teardown
@@ -26,29 +37,35 @@ class AsyncOperationsTest < ActiveSupport::TestCase
       bulk_task = @adapter.bulk([{ index: { _index: "test", _id: 1, data: { title: "test" } } }])
       assert_kind_of Async::Task, bulk_task, "bulk should return Async::Task"
 
-      # Create index
+      # Create index. Operations on the same resource are awaited before the
+      # next one is issued — running them concurrently would race (delete
+      # before create, update/delete version conflicts) and errors are no
+      # longer swallowed.
       create_task = @adapter.create_index("test_index")
       assert_kind_of Async::Task, create_task, "create_index should return Async::Task"
+      create_task.wait
 
       # Delete index
       delete_task = @adapter.delete_index("test_index")
       assert_kind_of Async::Task, delete_task, "delete_index should return Async::Task"
+      delete_task.wait
 
       # Index document
       index_doc_task = @adapter.index_document(index: "test", id: 1, document: { title: "test" })
       assert_kind_of Async::Task, index_doc_task, "index_document should return Async::Task"
+      index_doc_task.wait
 
       # Update document
       update_task = @adapter.update_document(index: "test", id: 1, changes: { title: "updated" })
       assert_kind_of Async::Task, update_task, "update_document should return Async::Task"
+      update_task.wait
 
       # Delete document
       delete_doc_task = @adapter.delete_document(index: "test", id: 1)
       assert_kind_of Async::Task, delete_doc_task, "delete_document should return Async::Task"
 
-      # Wait for all tasks to complete
-      [search_task, bulk_task, create_task, delete_task,
-       index_doc_task, update_task, delete_doc_task].each(&:wait)
+      # Wait for the remaining tasks to complete
+      [search_task, bulk_task, delete_doc_task].each(&:wait)
     end
   end
 

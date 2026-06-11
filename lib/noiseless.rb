@@ -17,6 +17,21 @@ require_relative "noiseless/version"
 module Noiseless
   class Error < StandardError; end
 
+  # HTTP-level failure from the search backend (non-2xx response).
+  class RequestError < Error
+    attr_reader :status, :error_type
+
+    def initialize(message, status: nil, error_type: nil)
+      super(message)
+      @status = status
+      @error_type = error_type
+    end
+  end
+
+  # Raised when a search query is rejected by the backend
+  # (malformed query, missing index, shard failures).
+  class SearchError < RequestError; end
+
   class Configuration
     attr_accessor :connections_config, :default_connection, :default_adapter, :config_path
 

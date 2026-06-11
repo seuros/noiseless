@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "async"
+require "json"
 require_relative "introspection"
 
 module Noiseless
@@ -206,6 +207,31 @@ module Noiseless
         from: (paginate_node.page - 1) * paginate_node.per_page,
         size: paginate_node.per_page
       }
+    end
+
+    # Parses a backend HTTP response, raising when the backend reported an error.
+    # Success responses return the parsed JSON payload; error responses raise
+    # `error_class` with the backend's error type/reason so failures are never
+    # silently converted into empty results.
+    def parse_json_response!(response, error_class: Noiseless::RequestError, context: nil)
+      body = response.read
+      return JSON.parse(body) if response.success?
+
+      payload = begin
+        JSON.parse(body)
+      rescue JSON::ParserError, TypeError
+        nil
+      end
+      error = payload.is_a?(Hash) ? payload["error"] : nil
+      reason = if error.is_a?(Hash)
+                 [ error["type"], error["reason"] ].compact.join(": ")
+      elsif error
+                 error.to_s
+      else
+                 "HTTP #{response.status}"
+      end
+      message = context ? "#{context}: #{reason}" : reason
+      raise error_class.new(message, status: response.status, error_type: error.is_a?(Hash) ? error["type"] : nil)
     end
 
     # Override in subclasses
