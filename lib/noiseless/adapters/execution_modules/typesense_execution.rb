@@ -1,14 +1,13 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "http_transport"
 
 module Noiseless
   module Adapters
     module ExecutionModules
       module TypesenseExecution
-        def close
-          @clients&.each_value(&:close)
-        end
+        include HttpTransport
 
         private
 
@@ -391,54 +390,8 @@ module Noiseless
           response&.close
         end
 
-        # HTTP helpers using Async::HTTP with connection pooling
-        def get_request(path)
-          with_client do |client|
-            client.get(path, default_headers)
-          end
-        end
-
-        def post_request(path, body, content_type: "application/json")
-          headers = body ? default_headers + [["content-type", content_type]] : default_headers
-
-          with_client do |client|
-            client.post(path, headers, body)
-          end
-        end
-
-        def put_request(path, body, content_type: "application/json")
-          headers = body ? default_headers + [["content-type", content_type]] : default_headers
-
-          with_client do |client|
-            client.put(path, headers, body)
-          end
-        end
-
-        def delete_request(path)
-          with_client do |client|
-            client.delete(path, default_headers)
-          end
-        end
-
-        def head_request(path)
-          with_client do |client|
-            client.head(path, default_headers)
-          end
-        end
-
-        def with_client
-          # Select a random host for load balancing
-          host = @hosts.sample
-          client = @clients[host]
-
-          yield(client)
-        end
-
         def default_headers
-          headers = [
-            ["accept", "application/json"],
-            ["user-agent", "Noiseless/#{Noiseless::VERSION} (Ruby/#{RUBY_VERSION})"]
-          ]
+          headers = super
 
           # Add Typesense API key if configured
           if @connection_params && @connection_params[:api_key]

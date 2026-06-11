@@ -7,22 +7,8 @@ module Noiseless
     class OpenSearch < Adapter
       include ExecutionModules::OpensearchExecution
 
-      def initialize(hosts: [], **connection_params)
-        # Ensure we always have at least one host
-        hosts_array = Array(hosts)
-        default_port = ENV["OPENSEARCH_PORT"] || 9200
-        @hosts = hosts_array.empty? ? ["http://localhost:#{default_port}"] : hosts_array
-        @connection_params = connection_params
-
-        # Initialize HTTP clients for each host
-        @clients = {}
-        @hosts.each do |host|
-          endpoint = Async::HTTP::Endpoint.parse(host)
-          @clients[host] = Async::HTTP::Client.new(endpoint)
-        end
-
-        super(hosts: @hosts, **connection_params)
-      end
+      ClusterAPI = Adapters::ClusterAPI
+      IndicesAPI = Adapters::IndicesAPI
 
       # OpenSearch-specific features
       def point_in_time_search(ast_node, pit_id:, **)
@@ -62,38 +48,6 @@ module Noiseless
       def search_raw(query_body, indexes: [], **)
         Async do
           execute_search(query_body, indexes: indexes, **)
-        end
-      end
-
-      class ClusterAPI
-        def initialize(adapter)
-          @adapter = adapter
-        end
-
-        def health(**)
-          Sync do
-            @adapter.send(:execute_cluster_health, **)
-          end
-        end
-      end
-
-      class IndicesAPI
-        def initialize(adapter)
-          @adapter = adapter
-        end
-
-        def get(index:)
-          @adapter.execute_index_exists?(index) ? { index => {} } : raise("Index not found")
-        end
-
-        def stats(index:)
-          # Return basic stats structure
-          { "indices" => { index => {} } }
-        end
-
-        def refresh(index:)
-          # Refresh the index to make documents immediately searchable
-          @adapter.send(:execute_refresh_index, index)
         end
       end
 
@@ -202,6 +156,12 @@ module Noiseless
             @adapter.send(:execute_rule_exists?, feature_type, rule_id)
           end
         end
+      end
+
+      private
+
+      def default_port
+        ENV["OPENSEARCH_PORT"] || 9200
       end
     end
   end

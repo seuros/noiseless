@@ -100,7 +100,8 @@ module Noiseless
 
   # Setup Zeitwerk autoloader
   loader = Zeitwerk::Loader.for_gem
-  loader.inflector.inflect("ast" => "AST", "dsl" => "DSL", "open_search" => "OpenSearch")
+  loader.inflector.inflect("ast" => "AST", "dsl" => "DSL", "open_search" => "OpenSearch",
+                           "cluster_api" => "ClusterAPI", "indices_api" => "IndicesAPI")
   loader.ignore("#{__dir__}/application_search.rb")
   loader.ignore("#{__dir__}/noiseless/test_helper.rb")
   loader.ignore("#{__dir__}/noiseless/test_case.rb")
