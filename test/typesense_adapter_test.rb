@@ -5,7 +5,7 @@ require "test_helper"
 class TypesenseAdapterTest < ActiveSupport::TestCase
   def ts_url
     host = ENV.fetch("TYPESENSE_HOST", "localhost")
-    port = ENV.fetch("TYPESENSE_PORT", "8108")
+    port = ENV.fetch("TYPESENSE_PORT", "8109")
     "http://#{host}:#{port}"
   end
 
