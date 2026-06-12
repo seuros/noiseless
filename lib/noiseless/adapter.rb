@@ -61,6 +61,14 @@ module Noiseless
       end
     end
 
+    def refresh_index(index_name)
+      Async do
+        instrument(:refresh_index, index: index_name) do
+          execute_refresh_index(index_name)
+        end
+      end
+    end
+
     def index_exists?(index_name)
       Async do
         execute_index_exists?(index_name)
@@ -257,6 +265,10 @@ module Noiseless
 
     def execute_delete_index(_index_name, **_opts)
       { acknowledged: true }
+    end
+
+    def execute_refresh_index(_index_name)
+      { "acknowledged" => true }
     end
 
     def execute_index_exists?(_index_name)

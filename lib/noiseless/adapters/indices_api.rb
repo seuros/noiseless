@@ -19,7 +19,7 @@ module Noiseless
 
       def refresh(index:)
         # Refresh the index to make documents immediately searchable
-        @adapter.send(:execute_refresh_index, index)
+        @adapter.refresh_index(index).wait
       end
     end
   end

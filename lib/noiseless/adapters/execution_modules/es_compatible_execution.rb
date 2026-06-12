@@ -32,6 +32,10 @@ module Noiseless
 
         def execute_delete_index(index_name, **_opts)
           response = delete_request("/#{index_name}")
+          # Deleting an absent index is idempotent, matching official ES/OS
+          # clients' ignore-404 behaviour.
+          return { "acknowledged" => true, "result" => "not_found" } if response.status == 404
+
           parse_json_response!(response, context: "delete index #{index_name}")
         ensure
           response&.close
@@ -64,6 +68,10 @@ module Noiseless
 
         def execute_delete_document(index, id, **_opts)
           response = delete_request("/#{index}/_doc/#{id}")
+          # 404 covers both a missing document and a missing index; either way
+          # the delete is idempotent.
+          return { "_index" => index, "_id" => id, "result" => "not_found" } if response.status == 404
+
           parse_json_response!(response, context: "delete document #{index}/#{id}")
         ensure
           response&.close
