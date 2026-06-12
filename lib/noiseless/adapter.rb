@@ -9,6 +9,17 @@ module Noiseless
     include Instrumentation
     include Introspection
 
+    GEO_FILTER_KEYS = %i[geo_distance geo_bounding_box geo_polygon geo_shape].freeze
+    RANGE_OPERATORS = %i[gte lte gt lt].freeze
+
+    # Aggregation types that require a field (or script) to execute.
+    FIELD_BASED_AGG_TYPES = %i[
+      terms rare_terms significant_terms missing
+      avg sum min max cardinality value_count stats extended_stats
+      percentiles percentile_ranks histogram date_histogram
+      geohash_grid geotile_grid geo_distance
+    ].freeze
+
     def initialize(hosts: [], **connection_params)
       @hosts = hosts
       @connection_params = connection_params.dup
@@ -197,9 +208,30 @@ module Noiseless
       {
         bool: {
           must: must_queries,
-          filter: bool_node.filter.map { |f| { term: { f.field => f.value } } }
+          filter: bool_node.filter.map { |f| build_filter_clause(f) }
         }.reject { |_, v| v.empty? }
       }
+    end
+
+    def build_filter_clause(node)
+      value = node.value
+      case value
+      when Hash
+        keys = value.keys.map(&:to_sym)
+        if keys.intersect?(GEO_FILTER_KEYS)
+          # Geo filters are already complete query clauses, e.g.
+          # { geo_distance: { distance: "100km", location: { lat:, lon: } } }
+          value
+        elsif (keys - RANGE_OPERATORS).empty?
+          { range: { node.field => value } }
+        else
+          { term: { node.field => value } }
+        end
+      when Array
+        { terms: { node.field => value } }
+      else
+        { term: { node.field => value } }
+      end
     end
 
     def build_sort_hash(sort_nodes)
@@ -232,12 +264,12 @@ module Noiseless
       end
       error = payload.is_a?(Hash) ? payload["error"] : nil
       reason = if error.is_a?(Hash)
-                 [ error["type"], error["reason"] ].compact.join(": ")
-      elsif error
+                 [error["type"], error["reason"]].compact.join(": ")
+               elsif error
                  error.to_s
-      else
+               else
                  "HTTP #{response.status}"
-      end
+               end
       message = context ? "#{context}: #{reason}" : reason
       raise error_class.new(message, status: response.status, error_type: error.is_a?(Hash) ? error["type"] : nil)
     end
@@ -339,6 +371,10 @@ module Noiseless
       agg_body = {}
       agg_body[:field] = agg.field if agg.field
       agg_body.merge!(agg.options)
+
+      # Convention: an unqualified field-based aggregation targets the field
+      # named after the aggregation itself.
+      agg_body[:field] = agg.name if !agg_body.key?(:field) && !agg_body.key?(:script) && FIELD_BASED_AGG_TYPES.include?(agg.type.to_sym)
 
       result[agg.type] = agg_body
 
