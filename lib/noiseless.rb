@@ -32,6 +32,14 @@ module Noiseless
   # (malformed query, missing index, shard failures).
   class SearchError < RequestError; end
 
+  # Raised when the search backend cannot be reached at all: connection
+  # refused, DNS failure, reset socket, or transport timeout. Distinct from
+  # RequestError, which means the backend *was* reached and replied with an
+  # HTTP error. Wrapping happens at the transport boundary (HttpTransport),
+  # so callers rescue Noiseless::Error instead of enumerating socket/system
+  # exception classes from whatever HTTP stack the transport happens to use.
+  class ConnectionError < Error; end
+
   class Configuration
     attr_accessor :connections_config, :default_connection, :default_adapter, :config_path
 

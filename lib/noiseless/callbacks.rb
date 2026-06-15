@@ -54,7 +54,7 @@ module Noiseless
       return unless should_update_search_index?
 
       update_search_index_async if noiseless_new_record? || (respond_to?(:changed?) && changed?)
-    rescue Net::ProtocolError, JSON::ParserError, Timeout::Error => e
+    rescue Noiseless::Error => e
       handle_search_index_error(e, :update)
     end
 
@@ -62,7 +62,7 @@ module Noiseless
       return unless should_update_search_index?
 
       update_search_index_async
-    rescue Net::ProtocolError, JSON::ParserError, Timeout::Error => e
+    rescue Noiseless::Error => e
       handle_search_index_error(e, :update)
     end
 
@@ -70,7 +70,7 @@ module Noiseless
       return unless should_update_search_index?
 
       remove_from_search_index_async
-    rescue Net::ProtocolError, JSON::ParserError, Timeout::Error => e
+    rescue Noiseless::Error => e
       handle_search_index_error(e, :delete)
     end
 
@@ -78,7 +78,7 @@ module Noiseless
       return unless should_update_search_index?
 
       remove_from_search_index_async
-    rescue Net::ProtocolError, JSON::ParserError, Timeout::Error => e
+    rescue Noiseless::Error => e
       handle_search_index_error(e, :delete)
     end
 

@@ -1,11 +1,20 @@
 # frozen_string_literal: true
 
+require "socket"
+require "timeout"
+
 module Noiseless
   module Adapters
     module ExecutionModules
       # Shared Async::HTTP connection handling for HTTP-based adapters.
       # Host classes must provide a private +default_port+ method.
       module HttpTransport
+        # Low-level failures the Async::HTTP stack raises when it cannot
+        # complete a round-trip with the backend (refused/reset connection,
+        # DNS failure, transport timeout). These are wrapped into
+        # Noiseless::ConnectionError so callers never have to know which HTTP
+        # stack is underneath.
+        TRANSPORT_ERRORS = [SystemCallError, SocketError, IOError, Timeout::Error].freeze
         def initialize(hosts: [], **connection_params)
           # Ensure we always have at least one host
           hosts_array = Array(hosts)
@@ -69,6 +78,9 @@ module Noiseless
           client = @clients[host]
 
           yield(client)
+        rescue *TRANSPORT_ERRORS => e
+          raise Noiseless::ConnectionError,
+                "search backend unreachable at #{host} (#{e.class}: #{e.message})"
         end
 
         def default_headers
