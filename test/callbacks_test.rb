@@ -60,6 +60,22 @@ class CallbacksTest < ActiveSupport::TestCase
     end
   end
 
+  class TransportAdapter < Noiseless::Adapter
+    include Noiseless::Adapters::ExecutionModules::HttpTransport
+
+    private
+
+    def default_port
+      9200
+    end
+  end
+
+  class TimeoutBodyResponse
+    def read
+      raise IO::TimeoutError, "read timeout"
+    end
+  end
+
   def lenient_record
     LenientArticle.new(title: "t", content: "c", author: "a", status: "draft")
   end
@@ -85,6 +101,18 @@ class CallbacksTest < ActiveSupport::TestCase
 
     error = assert_raises(Noiseless::ConnectionError) { transport.send(:get_request, "/") }
     assert_instance_of Errno::ECONNREFUSED, error.cause, "original error preserved as cause"
+  end
+
+  test "transport wraps timeout while reading response body in Noiseless::ConnectionError" do
+    adapter = TransportAdapter.new(hosts: ["http://example.test"])
+
+    error = assert_raises(Noiseless::ConnectionError) do
+      adapter.send(:parse_json_response!, TimeoutBodyResponse.new)
+    end
+
+    assert_instance_of IO::TimeoutError, error.cause, "original error preserved as cause"
+  ensure
+    adapter&.close
   end
 
   test "update callback swallows an unreachable backend by default" do

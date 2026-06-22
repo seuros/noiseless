@@ -28,4 +28,35 @@ class ConnectionManagerTest < ActiveSupport::TestCase
     end
     assert_match(/Unknown connection: unknown/, error.message)
   end
+
+  test "forwards configured timeout to adapter lookup" do
+    captured = nil
+    fake_lookup = lambda do |_adapter, **params|
+      captured = params
+      Object.new
+    end
+
+    Noiseless::Adapters.stub :lookup, fake_lookup do
+      @connection_manager.register(:test, adapter: :opensearch, hosts: ["http://localhost:9200"], timeout: 3)
+      @connection_manager.client(:test)
+    end
+
+    assert_equal 3, captured[:timeout]
+    assert_equal ["http://localhost:9200"], captured[:hosts]
+  end
+
+  test "omits timeout from lookup when not configured so transport default applies" do
+    captured = nil
+    fake_lookup = lambda do |_adapter, **params|
+      captured = params
+      Object.new
+    end
+
+    Noiseless::Adapters.stub :lookup, fake_lookup do
+      @connection_manager.register(:test, adapter: :opensearch, hosts: ["http://localhost:9200"])
+      @connection_manager.client(:test)
+    end
+
+    refute_includes captured.keys, :timeout
+  end
 end

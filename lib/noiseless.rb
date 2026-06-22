@@ -93,7 +93,7 @@ module Noiseless
     config.connections_config.each do |name, params|
       adapter_name = params[:adapter]
       hosts = params[:hosts] || []
-      connections.register(name, adapter: adapter_name, hosts: hosts)
+      connections.register(name, adapter: adapter_name, hosts: hosts, timeout: params[:timeout])
     end
   end
 

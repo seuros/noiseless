@@ -8,8 +8,8 @@ module Noiseless
     end
 
     # Register a named client statically from YAML (boot-time only)
-    def register(name, adapter:, hosts:)
-      @configs[name.to_sym] = { adapter: adapter, hosts: hosts }
+    def register(name, adapter:, hosts:, timeout: nil)
+      @configs[name.to_sym] = { adapter: adapter, hosts: hosts, timeout: timeout }
     end
 
     # Retrieve a client; defaults to :primary
@@ -19,7 +19,9 @@ module Noiseless
       # Lazy-load the adapter only when actually used
       @clients[name] ||= begin
         config = @configs.fetch(name) { raise "Unknown connection: #{name}" }
-        Adapters.lookup(config[:adapter], hosts: config[:hosts])
+        params = { hosts: config[:hosts] }
+        params[:timeout] = config[:timeout] unless config[:timeout].nil?
+        Adapters.lookup(config[:adapter], **params)
       end
     end
   end
