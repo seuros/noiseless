@@ -39,6 +39,7 @@ module Noiseless
     private
 
     def should_update_search_index?
+      return false unless Noiseless.config.auto_index
       return false if Thread.current[:noiseless_skip_auto_index]
       return false unless self.class.auto_index_enabled?
 

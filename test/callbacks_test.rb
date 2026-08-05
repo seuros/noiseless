@@ -135,4 +135,29 @@ class CallbacksTest < ActiveSupport::TestCase
       assert_raises(Noiseless::ConnectionError) { record.send(:update_search_index_on_commit) }
     end
   end
+
+  test "config.auto_index = false disables all indexing callbacks globally" do
+    record = strict_record
+    Noiseless.config.auto_index = false
+    record.stub(:document_manager, UnreachableDocumentManager.new) do
+      assert_nothing_raised { record.send(:update_search_index_on_commit) }
+      assert_nothing_raised { record.send(:remove_from_search_index_on_commit) }
+    end
+  ensure
+    Noiseless.config.auto_index = true
+  end
+
+  test "auto_index defaults from NOISELESS_AUTO_INDEX env var" do
+    original = ENV["NOISELESS_AUTO_INDEX"]
+    ENV["NOISELESS_AUTO_INDEX"] = "false"
+    refute Noiseless::Configuration.new.auto_index
+
+    ENV["NOISELESS_AUTO_INDEX"] = "true"
+    assert Noiseless::Configuration.new.auto_index
+
+    ENV.delete("NOISELESS_AUTO_INDEX")
+    assert Noiseless::Configuration.new.auto_index
+  ensure
+    original.nil? ? ENV.delete("NOISELESS_AUTO_INDEX") : ENV["NOISELESS_AUTO_INDEX"] = original
+  end
 end

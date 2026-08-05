@@ -42,11 +42,16 @@ module Noiseless
 
   class Configuration
     attr_accessor :connections_config, :default_connection, :default_adapter, :config_path
+    # Global kill switch for model auto-indexing callbacks. Lets environments
+    # without a search backend (e.g. CI) run without connection-error noise on
+    # every save. Defaults to NOISELESS_AUTO_INDEX env var, on unless "false".
+    attr_accessor :auto_index
 
     def initialize
       @connections_config = {}
       @default_connection = :primary
       @default_adapter = :opensearch
+      @auto_index = ENV.fetch("NOISELESS_AUTO_INDEX", "true") != "false"
       @config_path = lambda do
         if defined?(Rails) && Rails.respond_to?(:root) && Rails.root
           Rails.root.join("config/noiseless.yml")
