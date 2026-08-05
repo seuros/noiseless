@@ -8,7 +8,6 @@
       "changelog-path": "CHANGELOG.md",
       "version-file": "lib/noiseless/version.rb",
       "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": true,
       "versioning": "default"
     }
   },
