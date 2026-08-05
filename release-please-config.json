@@ -1,0 +1,16 @@
+{
+  "release-type": "ruby",
+  "package-name": "noiseless",
+  "packages": {
+    ".": {
+      "release-type": "ruby",
+      "package-name": "noiseless",
+      "changelog-path": "CHANGELOG.md",
+      "version-file": "lib/noiseless/version.rb",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "versioning": "default"
+    }
+  },
+  "bootstrap-sha": "af1186b8d46cb856770eefd48d1c8ce3e4412d5b"
+}
