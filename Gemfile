@@ -27,7 +27,7 @@ gem "kaminari", require: false
 gem "pagy", require: false
 
 gem "listen", group: :development
-gem "simplecov", "~> 0.22.0"
+gem "simplecov", ">= 0.22", "< 2"
 
 # Mermaid diagram generation
 gem "diagram"

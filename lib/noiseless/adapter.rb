@@ -359,8 +359,8 @@ module Noiseless
     end
 
     def build_aggregations_hash(aggregations)
-      aggregations.each_with_object({}) do |agg, hash|
-        hash[agg.name] = build_single_aggregation(agg)
+      aggregations.to_h do |agg|
+        [agg.name, build_single_aggregation(agg)]
       end
     end
 

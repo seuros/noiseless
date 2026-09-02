@@ -19,14 +19,15 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   spec.add_dependency "activesupport", "~> 8.1"
-  spec.add_dependency "async", "~> 2.20"
-  spec.add_dependency "async-http", "~> 0.80"
-  spec.add_dependency "async-pool", "~> 0.8"
+  spec.add_dependency "async", "~> 2.45"
+  spec.add_dependency "async-http", "~> 0.103"
+  spec.add_dependency "async-pool", "~> 0.11"
   spec.add_dependency "railties", "~> 8.1"
-  spec.add_dependency "zeitwerk", "~> 2.7"
+  spec.add_dependency "zeitwerk", "~> 2.8"
   # rubocop:disable Gemspec/DevelopmentDependencies
   spec.add_development_dependency "async-safe", "~> 0.5"
-  spec.add_development_dependency "minitest", "~> 5.27"
+  spec.add_development_dependency "minitest", "~> 6.0"
+  spec.add_development_dependency "minitest-mock", "~> 5.27"
   spec.add_development_dependency "sqlite3", "~> 2.9"
   spec.add_development_dependency "vcr", "~> 6.4"
   spec.add_development_dependency "webmock", "~> 3.26"

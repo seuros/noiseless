@@ -221,13 +221,13 @@ module Noiseless
     end
 
     def to_ast
-      filter_nodes = @nodes.select { |n| n.is_a?(AST::Filter) }
-      vector_nodes = @nodes.select { |n| n.is_a?(AST::Vector) }
+      filter_nodes = @nodes.grep(AST::Filter)
+      vector_nodes = @nodes.grep(AST::Vector)
       must_nodes = @nodes.reject do |n|
         n.is_a?(AST::Filter) || n.is_a?(AST::Sort) || n.is_a?(AST::Paginate) || n.is_a?(AST::Vector)
       end
       bool_node = AST::Bool.new(must: must_nodes, filter: filter_nodes)
-      sort_nodes     = @nodes.select { |n| n.is_a?(AST::Sort) }
+      sort_nodes     = @nodes.grep(AST::Sort)
       paginate_node  = @nodes.find { |n| n.is_a?(AST::Paginate) }
       AST::Root.new(
         indexes: @indexes,

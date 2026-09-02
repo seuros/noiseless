@@ -13,6 +13,7 @@ require_relative "dummy/config/environment"
 require "rails/test_help"
 require "minitest/autorun"
 require "minitest/spec"
+require "minitest/mock"
 
 # Load the gem
 require "noiseless"

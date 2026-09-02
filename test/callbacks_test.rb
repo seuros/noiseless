@@ -148,7 +148,7 @@ class CallbacksTest < ActiveSupport::TestCase
   end
 
   test "auto_index defaults from NOISELESS_AUTO_INDEX env var" do
-    original = ENV["NOISELESS_AUTO_INDEX"]
+    original = ENV.fetch("NOISELESS_AUTO_INDEX", nil)
     ENV["NOISELESS_AUTO_INDEX"] = "false"
     refute Noiseless::Configuration.new.auto_index
 

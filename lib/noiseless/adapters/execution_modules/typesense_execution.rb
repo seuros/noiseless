@@ -402,7 +402,7 @@ module Noiseless
           headers
         end
 
-        # rubocop:disable Lint/DuplicateBranch
+        # rubocop:disable-next Lint/DuplicateBranch
         def map_type_to_typesense(elasticsearch_type)
           # Map Elasticsearch types to Typesense types
           case elasticsearch_type
@@ -418,7 +418,6 @@ module Noiseless
             "string" # Default to string for unknown types
           end
         end
-        # rubocop:enable Lint/DuplicateBranch
       end
     end
   end

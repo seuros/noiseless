@@ -44,6 +44,11 @@ Style/OpenStructUse:
   Exclude:
     - test/**/*
 
+Style/OneClassPerFile:
+  Exclude:
+    - benchmark/**/*
+    - test/**/*
+
 Layout/LineLength:
   Max: 150
   Exclude:

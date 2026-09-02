@@ -13,7 +13,7 @@ module Noiseless
       end
 
       def each
-        return enum_for(__method__) unless block_given?
+        enum_for(__method__) unless block_given?
       end
     end
   end
