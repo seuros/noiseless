@@ -30,11 +30,27 @@ module Noiseless
         # +timeout:+.
         DEFAULT_TIMEOUT = 5
 
-        def initialize(hosts: [], timeout: DEFAULT_TIMEOUT, **connection_params)
+        # Default wall-clock deadline (seconds) for a complete round-trip:
+        # request write, response headers, and full body. The idle timeout
+        # above never trips against a backend that keeps trickling bytes —
+        # each read makes "progress" — which leaves callers blocked in
+        # Sync { ... .wait } indefinitely. This caps total duration instead.
+        # Override per-connection with +request_timeout:+; nil disables the
+        # deadline (long bulk imports may need a higher value or nil).
+        DEFAULT_REQUEST_TIMEOUT = 30
+
+        BufferedResponse = Struct.new(:status, :body) do
+          def read = body
+          def success? = (200..299).cover?(status)
+          def close = nil
+        end
+
+        def initialize(hosts: [], timeout: DEFAULT_TIMEOUT, request_timeout: DEFAULT_REQUEST_TIMEOUT, **connection_params)
           # Ensure we always have at least one host
           hosts_array = Array(hosts)
           @hosts = hosts_array.empty? ? ["http://localhost:#{default_port}"] : hosts_array
           @timeout = timeout
+          @request_timeout = request_timeout
           @connection_params = connection_params
 
           # Initialize HTTP clients for each host. The endpoint timeout makes a
@@ -95,7 +111,27 @@ module Noiseless
           host = @hosts.sample
           client = @clients[host]
 
-          wrap_transport_errors(host: host) { yield(client) }
+          wrap_transport_errors(host: host) do
+            with_request_deadline(host: host) do
+              buffer_response(yield(client))
+            end
+          end
+        end
+
+        def with_request_deadline(host:, &)
+          task = @request_timeout && Async::Task.current?
+          return yield unless task
+
+          task.with_timeout(@request_timeout, &)
+        rescue Async::TimeoutError
+          raise Noiseless::ConnectionError,
+                "search backend at #{host} exceeded request_timeout (#{@request_timeout}s wall-clock)"
+        end
+
+        def buffer_response(response)
+          BufferedResponse.new(response.status, response.read)
+        ensure
+          response.close
         end
 
         def parse_json_response!(response, error_class: Noiseless::RequestError, context: nil)
