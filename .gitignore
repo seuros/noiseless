@@ -9,7 +9,7 @@ test/dummy/tmp/local_secret.txt
 
 # Test artifacts
 test/coverage/
-test/dummy/log/*.log
+test/dummy/log/*
 test/dummy/tmp/*
 !test/dummy/tmp/.keep
 !test/dummy/tmp/storage/.keep

@@ -24,9 +24,10 @@ module Noiseless
           return execute_vector_search(model, query_hash) if query_hash[:vector]
 
           scope = build_search_scope(model, query_hash)
-          records = scope.to_a
+          total = scope.except(:order, :limit, :offset).count
+          records = apply_pagination(scope, query_hash[:paginate]).to_a
 
-          format_as_search_response(records, model)
+          format_as_search_response(records, model, total: total)
         rescue StandardError => e
           error_response(e)
         end
@@ -39,7 +40,7 @@ module Noiseless
           scope = model.all
 
           # Apply any filters first
-          scope = apply_filter_clauses(scope, query_hash[:bool]&.filter || [])
+          scope = apply_filter_clauses(scope, query_hash[:bool]&.filter || [], model)
 
           # Apply vector search
           scope = vector_search(
@@ -104,43 +105,20 @@ module Noiseless
           false
         end
 
-        def execute_index_document(index, id, document, **)
-          model = resolve_model([index])
-          return { "_id" => id, "result" => "error", "error" => "Model not found" } unless model
-
-          record = model.find_or_initialize_by(id: id)
-          record.assign_attributes(document.slice(*model.column_names))
-          record.save!
-
-          { "_index" => index, "_id" => id, "result" => record.previously_new_record? ? "created" : "updated" }
-        rescue StandardError => e
-          { "_index" => index, "_id" => id, "result" => "error", "error" => e.message }
+        # Document writes are no-ops: the table IS the index, so queries always
+        # see current data. Writing indexed documents (which may be transformed
+        # by mappings) back into source rows would corrupt them, and deleting a
+        # record because its index entry was removed inverts ownership.
+        def execute_index_document(index, id, _document, **)
+          { "_index" => index, "_id" => id, "result" => "noop" }
         end
 
-        def execute_update_document(index, id, changes, **)
-          model = resolve_model([index])
-          return { "_id" => id, "result" => "error", "error" => "Model not found" } unless model
-
-          record = model.find(id)
-          record.update!(changes.slice(*model.column_names))
-
-          { "_index" => index, "_id" => id, "result" => "updated" }
-        rescue ActiveRecord::RecordNotFound
-          { "_index" => index, "_id" => id, "result" => "not_found" }
-        rescue StandardError => e
-          { "_index" => index, "_id" => id, "result" => "error", "error" => e.message }
+        def execute_update_document(index, id, _changes, **)
+          { "_index" => index, "_id" => id, "result" => "noop" }
         end
 
         def execute_delete_document(index, id, **)
-          model = resolve_model([index])
-          return { "_id" => id, "result" => "error", "error" => "Model not found" } unless model
-
-          model.destroy(id)
-          { "_index" => index, "_id" => id, "result" => "deleted" }
-        rescue ActiveRecord::RecordNotFound
-          { "_index" => index, "_id" => id, "result" => "not_found" }
-        rescue StandardError => e
-          { "_index" => index, "_id" => id, "result" => "error", "error" => e.message }
+          { "_index" => index, "_id" => id, "result" => "noop" }
         end
 
         def execute_document_exists?(index, id)
@@ -175,13 +153,10 @@ module Noiseless
           scope = apply_must_clauses(scope, query_hash[:bool]&.must || [], model)
 
           # Apply filter clauses (exact matches)
-          scope = apply_filter_clauses(scope, query_hash[:bool]&.filter || [])
+          scope = apply_filter_clauses(scope, query_hash[:bool]&.filter || [], model)
 
-          # Apply sorting
-          scope = apply_sorting(scope, query_hash[:sort] || [])
-
-          # Apply pagination
-          apply_pagination(scope, query_hash[:paginate])
+          # Apply sorting (pagination is applied by the caller, after counting)
+          apply_sorting(scope, query_hash[:sort] || [], model)
         end
 
         def apply_must_clauses(scope, must_nodes, model)
@@ -211,6 +186,10 @@ module Noiseless
           field = node.field.to_s
           value = node.value.to_s
 
+          # Mapping-only fields (denormalized into a search index, not columns)
+          # cannot be satisfied here; fail closed rather than matching everything.
+          return scope.none unless column?(model, field)
+
           # Use pg_trgm similarity for fuzzy matching with unaccent
           if trgm_available? && text_column?(model, field)
             scope.where(
@@ -227,7 +206,10 @@ module Noiseless
 
         def apply_multi_match(scope, node, model)
           query = node.query.to_s
-          fields = node.fields.map(&:to_s)
+          # Drop mapping-only fields; if none of the requested fields are real
+          # columns the query cannot be satisfied — fail closed.
+          fields = node.fields.map(&:to_s).select { |field| column?(model, field) }
+          return scope.none if fields.empty?
 
           conditions = fields.map do |field|
             if trgm_available? && text_column?(model, field)
@@ -272,7 +254,7 @@ module Noiseless
           scope.where("#{quoted_column(node.field.to_s)} ILIKE ?", "#{sanitize_like(node.value)}%")
         end
 
-        def apply_filter_clauses(scope, filter_nodes)
+        def apply_filter_clauses(scope, filter_nodes, model = nil)
           return scope if filter_nodes.empty?
 
           filter_nodes.each do |node|
@@ -280,6 +262,10 @@ module Noiseless
 
             scope = if value.is_a?(Hash) && value[:geo_distance]
                       apply_geo_filter(scope, node)
+                    elsif model && !column?(model, node.field.to_s)
+                      # A filter on a mapping-only field cannot be enforced;
+                      # silently dropping it would broaden results, so fail closed.
+                      scope.none
                     else
                       scope.where(node.field => value)
                     end
@@ -310,13 +296,19 @@ module Noiseless
           scope
         end
 
-        def apply_sorting(scope, sort_nodes)
+        def apply_sorting(scope, sort_nodes, model = nil)
           return scope if sort_nodes.empty?
 
-          order_clauses = sort_nodes.map do |node|
+          order_clauses = sort_nodes.filter_map do |node|
+            field = node.field.to_s
+            # Sorting on a mapping-only field is cosmetic — drop it instead of
+            # erroring the whole query.
+            next if model && !column?(model, field)
+
             direction = node.direction.to_s.upcase == "DESC" ? "DESC" : "ASC"
-            "#{quoted_column(node.field.to_s)} #{direction}"
+            "#{quoted_column(field)} #{direction}"
           end
+          return scope if order_clauses.empty?
 
           scope.order(Arel.sql(order_clauses.join(", ")))
         end
@@ -332,9 +324,7 @@ module Noiseless
 
         # Response formatting
 
-        def format_as_search_response(records, model)
-          total = records.size
-
+        def format_as_search_response(records, model, total: records.size)
           hits = records.map do |record|
             {
               "_index" => model.table_name,
@@ -386,12 +376,15 @@ module Noiseless
         # Helper methods
 
         def resolve_model(indexes, model_class = nil)
-          return model_class if model_class
+          # The standard Model#execute path passes the Noiseless::Model search
+          # class here; only an ActiveRecord model can back a PG search, so
+          # fall through to index-name resolution for anything else.
+          return model_class if active_record_model?(model_class)
 
           index_name = indexes&.first
           return nil unless index_name
 
-          # Try cached model first
+          # Try cached model first (populated via register_model)
           return @model_class_cache[index_name] if @model_class_cache&.key?(index_name)
 
           # Try to infer model from index name
@@ -399,6 +392,10 @@ module Noiseless
           model_name.constantize
         rescue NameError
           nil
+        end
+
+        def active_record_model?(klass)
+          klass.is_a?(Class) && klass < ActiveRecord::Base
         end
 
         def trgm_available?
@@ -409,9 +406,13 @@ module Noiseless
           @unaccent_available ||= available_extensions.include?("unaccent")
         end
 
+        def column?(model, field)
+          model.columns_hash.key?(field.to_s)
+        end
+
         def text_column?(model, field)
           column = model.columns_hash[field.to_s]
-          column && %i[string text].include?(column.type)
+          column && %i[string text citext].include?(column.type) && !column.array
         end
 
         def quoted_column(field)
@@ -439,18 +440,9 @@ module Noiseless
 
         def process_bulk_action(action)
           if action[:index]
-            index = action[:index][:_index]
-            id = action[:index][:_id]
-            data = action[:index][:data]
-
-            result = execute_index_document(index, id, data)
-            { "index" => result }
+            { "index" => execute_index_document(action[:index][:_index], action[:index][:_id], nil) }
           elsif action[:delete]
-            index = action[:delete][:_index]
-            id = action[:delete][:_id]
-
-            result = execute_delete_document(index, id)
-            { "delete" => result }
+            { "delete" => execute_delete_document(action[:delete][:_index], action[:delete][:_id]) }
           else
             { "error" => "Unknown action type" }
           end

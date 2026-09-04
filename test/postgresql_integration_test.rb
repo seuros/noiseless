@@ -101,6 +101,115 @@ class PostgresqlIntegrationTest < ActiveSupport::TestCase
     assert_empty result.records
   end
 
+  test "total reflects unpaginated match count, not the page size" do
+    builder = Noiseless::QueryBuilder.new(@search_model)
+    builder.paginate(page: 1, per_page: 2)
+    ast = builder.to_ast
+
+    result = Sync do
+      @adapter.search(ast, model_class: Article, response_type: :results).wait
+    end
+
+    assert_operator result.records.size, :<=, 2
+    assert_equal Article.count, result.total
+  end
+
+  test "multi_match drops mapping-only fields and still matches on real columns" do
+    builder = Noiseless::QueryBuilder.new(@search_model)
+    builder.multi_match("Bluetooth", %i[title name_aliases])
+    ast = builder.to_ast
+
+    result = Sync do
+      @adapter.search(ast, model_class: Article, response_type: :results).wait
+    end
+
+    assert result.total.positive?, "Expected matches on title despite unknown name_aliases field"
+  end
+
+  test "multi_match with only mapping-only fields fails closed" do
+    builder = Noiseless::QueryBuilder.new(@search_model)
+    builder.multi_match("Bluetooth", %i[name_aliases other_ghost_field])
+    ast = builder.to_ast
+
+    result = Sync do
+      @adapter.search(ast, model_class: Article, response_type: :results).wait
+    end
+
+    assert_equal 0, result.total
+  end
+
+  test "match on a mapping-only field fails closed" do
+    builder = Noiseless::QueryBuilder.new(@search_model)
+    builder.match(:name_aliases, "Bluetooth")
+    ast = builder.to_ast
+
+    result = Sync do
+      @adapter.search(ast, model_class: Article, response_type: :results).wait
+    end
+
+    assert_equal 0, result.total
+  end
+
+  test "filter on a mapping-only field fails closed" do
+    builder = Noiseless::QueryBuilder.new(@search_model)
+    builder.where(:ghost_field, "anything")
+    ast = builder.to_ast
+
+    result = Sync do
+      @adapter.search(ast, model_class: Article, response_type: :results).wait
+    end
+
+    assert_equal 0, result.total
+  end
+
+  test "sort on a mapping-only field is dropped instead of erroring" do
+    builder = Noiseless::QueryBuilder.new(@search_model)
+    builder.order(:ghost_field, :desc)
+    builder.where(:status, "published")
+    ast = builder.to_ast
+
+    result = Sync do
+      @adapter.search(ast, model_class: Article, response_type: :results).wait
+    end
+
+    assert result.total.positive?
+  end
+
+  test "records support indifferent access for pluck(:id) finder patterns" do
+    builder = Noiseless::QueryBuilder.new(@search_model)
+    builder.match(:title, "Part")
+    ast = builder.to_ast
+
+    result = Sync do
+      @adapter.search(ast, model_class: Article, response_type: :results).wait
+    end
+
+    ids = result.records.pluck(:id)
+    assert ids.any?, "Expected records"
+    assert ids.all?(Integer), "pluck(:id) must return real ids, got: #{ids.first(3).inspect}"
+    assert_equal ids, result.records.pluck("id")
+  end
+
+  test "document writes are no-ops and never mutate source rows" do
+    article = Article.first
+    original_title = article.title
+
+    index_result = Sync do
+      @adapter.index_document(
+        index: "articles", id: article.id, document: { "title" => "MUTATED BY INDEXER" }
+      ).wait
+    end
+    assert_equal "noop", index_result["result"]
+
+    delete_result = Sync do
+      @adapter.delete_document(index: "articles", id: article.id).wait
+    end
+    assert_equal "noop", delete_result["result"]
+
+    assert_equal original_title, article.reload.title
+    assert Article.exists?(article.id), "delete_document must not destroy source rows"
+  end
+
   private
 
   def postgresql_available?

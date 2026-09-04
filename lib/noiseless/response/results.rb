@@ -12,7 +12,9 @@ module Noiseless
       end
 
       def sources
-        @sources ||= hits.map { |hit| hit["_source"] }
+        # Indifferent access so callers can pluck(:id) or read ["id"] regardless
+        # of which adapter produced the hit.
+        @sources ||= hits.map { |hit| (hit["_source"] || {}).with_indifferent_access }
       end
 
       alias records sources
