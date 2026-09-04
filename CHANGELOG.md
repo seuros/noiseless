@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/seuros/noiseless/compare/noiseless/v0.7.0...noiseless/v0.7.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* harden PostgreSQL adapter for production query paths ([606d77e](https://github.com/seuros/noiseless/commit/606d77eabe55661fddec0b578207e835372ed6d4))
+
 ## [0.7.0](https://github.com/seuros/noiseless/compare/noiseless/v0.6.0...noiseless/v0.7.0) (2026-09-02)
 
 
