@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 1) do
+ActiveRecord::Schema[8.1].define(version: 2) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "fuzzystrmatch"
   enable_extension "pg_catalog.plpgsql"
@@ -23,6 +23,7 @@ ActiveRecord::Schema[8.1].define(version: 1) do
     t.text "content", null: false
     t.datetime "created_at", null: false
     t.datetime "published_at"
+    t.string "roles", default: [], array: true
     t.string "status", default: "draft"
     t.json "tags", default: []
     t.string "title", null: false

@@ -169,11 +169,11 @@ module Noiseless
                     when AST::MultiMatch
                       apply_multi_match(scope, node, model)
                     when AST::Wildcard
-                      apply_wildcard(scope, node)
+                      apply_wildcard(scope, node, model)
                     when AST::Range
-                      apply_range(scope, node)
+                      apply_range(scope, node, model)
                     when AST::Prefix
-                      apply_prefix(scope, node)
+                      apply_prefix(scope, node, model)
                     else
                       scope
                     end
@@ -190,11 +190,12 @@ module Noiseless
           # cannot be satisfied here; fail closed rather than matching everything.
           return scope.none unless column?(model, field)
 
-          # Use pg_trgm similarity for fuzzy matching with unaccent
+          # Use pg_trgm similarity for fuzzy matching, accent-insensitive when
+          # the unaccent extension is present.
           if trgm_available? && text_column?(model, field)
             scope.where(
-              "unaccent(#{quoted_column(field)}) % unaccent(?) OR " \
-              "unaccent(#{quoted_column(field)}) ILIKE unaccent(?)",
+              "#{fuzzy_column(field)} % #{fuzzy_param} OR " \
+              "#{fuzzy_column(field)} ILIKE #{fuzzy_param}",
               value,
               "%#{sanitize_like(value)}%"
             )
@@ -213,8 +214,8 @@ module Noiseless
 
           conditions = fields.map do |field|
             if trgm_available? && text_column?(model, field)
-              "(unaccent(#{quoted_column(field)}) % unaccent(?) OR " \
-                "unaccent(#{quoted_column(field)}) ILIKE unaccent(?))"
+              "(#{fuzzy_column(field)} % #{fuzzy_param} OR " \
+                "#{fuzzy_column(field)} ILIKE #{fuzzy_param})"
             else
               "#{quoted_column(field)} ILIKE ?"
             end
@@ -231,15 +232,19 @@ module Noiseless
           scope.where(conditions.join(" OR "), *params)
         end
 
-        def apply_wildcard(scope, node)
+        def apply_wildcard(scope, node, model = nil)
           field = node.field.to_s
+          return scope.none if model && !column?(model, field)
+
           # Convert OpenSearch wildcards to SQL: * -> %, ? -> _
           pattern = node.value.to_s.tr("*", "%").tr("?", "_")
 
           scope.where("#{quoted_column(field)} ILIKE ?", pattern)
         end
 
-        def apply_range(scope, node)
+        def apply_range(scope, node, model = nil)
+          return scope.none if model && !column?(model, node.field.to_s)
+
           field = quoted_column(node.field.to_s)
 
           scope = scope.where("#{field} >= ?", node.gte) if node.gte
@@ -250,7 +255,9 @@ module Noiseless
           scope
         end
 
-        def apply_prefix(scope, node)
+        def apply_prefix(scope, node, model = nil)
+          return scope.none if model && !column?(model, node.field.to_s)
+
           scope.where("#{quoted_column(node.field.to_s)} ILIKE ?", "#{sanitize_like(node.value)}%")
         end
 
@@ -266,12 +273,21 @@ module Noiseless
                       # A filter on a mapping-only field cannot be enforced;
                       # silently dropping it would broaden results, so fail closed.
                       scope.none
+                    elsif model && array_column?(model, node.field.to_s)
+                      apply_array_filter(scope, node.field.to_s, value, model)
                     else
                       scope.where(node.field => value)
                     end
           end
 
           scope
+        end
+
+        def apply_array_filter(scope, field, value, model)
+          cast = "#{model.columns_hash[field].sql_type.sub(/\[\]\z/, '')}[]"
+          operator = value.is_a?(Array) ? "&&" : "@>"
+
+          scope.where("#{quoted_column(field)} #{operator} ARRAY[?]::#{cast}", value)
         end
 
         def apply_geo_filter(scope, node)
@@ -297,17 +313,20 @@ module Noiseless
         end
 
         def apply_sorting(scope, sort_nodes, model = nil)
-          return scope if sort_nodes.empty?
-
+          sorted_fields = []
           order_clauses = sort_nodes.filter_map do |node|
             field = node.field.to_s
             # Sorting on a mapping-only field is cosmetic — drop it instead of
             # erroring the whole query.
             next if model && !column?(model, field)
 
+            sorted_fields << field
             direction = node.direction.to_s.upcase == "DESC" ? "DESC" : "ASC"
             "#{quoted_column(field)} #{direction}"
           end
+
+          primary_key = model.respond_to?(:primary_key) ? model.primary_key : nil
+          order_clauses << "#{quoted_column(primary_key)} ASC" if primary_key && !sorted_fields.include?(primary_key.to_s)
           return scope if order_clauses.empty?
 
           scope.order(Arel.sql(order_clauses.join(", ")))
@@ -413,6 +432,18 @@ module Noiseless
         def text_column?(model, field)
           column = model.columns_hash[field.to_s]
           column && %i[string text citext].include?(column.type) && !column.array
+        end
+
+        def array_column?(model, field)
+          model.columns_hash[field.to_s]&.array
+        end
+
+        def fuzzy_column(field)
+          unaccent_available? ? "unaccent(#{quoted_column(field)})" : quoted_column(field)
+        end
+
+        def fuzzy_param
+          unaccent_available? ? "unaccent(?)" : "?"
         end
 
         def quoted_column(field)

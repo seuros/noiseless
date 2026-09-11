@@ -210,6 +210,95 @@ class PostgresqlIntegrationTest < ActiveSupport::TestCase
     assert Article.exists?(article.id), "delete_document must not destroy source rows"
   end
 
+  test "array column filters use contains/overlap semantics and work through search" do
+    supplier, agent, buyer = Article.first(3)
+    supplier.update!(roles: %w[supplier buyer])
+    agent.update!(roles: %w[agent])
+    buyer.update!(roles: %w[buyer])
+
+    term = @adapter.send(
+      :apply_filter_clauses, Article.all, [Noiseless::AST::Filter.new(:roles, "supplier")], Article
+    )
+    assert_includes term.to_sql, "@>"
+    assert_equal [supplier.id], term.pluck(:id)
+
+    terms = @adapter.send(
+      :apply_filter_clauses, Article.all,
+      [Noiseless::AST::Filter.new(:roles, %w[supplier agent])], Article
+    )
+    assert_includes terms.to_sql, "&&"
+    assert_equal [supplier.id, agent.id].sort, terms.pluck(:id).sort
+
+    builder = Noiseless::QueryBuilder.new(@search_model)
+    builder.where(:roles, "agent")
+    result = Sync do
+      @adapter.search(builder.to_ast, model_class: Article, response_type: :results).wait
+    end
+    assert_equal 1, result.total
+  end
+
+  test "wildcard, range and prefix fail closed on ghost fields but match real columns" do
+    ghost_scopes = [
+      @adapter.send(:apply_wildcard, Article.all,
+                    Noiseless::AST::Wildcard.new(:ghost_field, "*x*"), Article),
+      @adapter.send(:apply_range, Article.all,
+                    Noiseless::AST::Range.new(:ghost_field, gte: 1), Article),
+      @adapter.send(:apply_prefix, Article.all,
+                    Noiseless::AST::Prefix.new(:ghost_field, "x"), Article)
+    ]
+    ghost_scopes.each do |scope|
+      assert_empty scope.to_a, "Ghost-field clause must fail closed, not raise or broaden"
+    end
+
+    builder = Noiseless::QueryBuilder.new(@search_model)
+    builder.wildcard(:title, "*Part*")
+    result = Sync do
+      @adapter.search(builder.to_ast, model_class: Article, response_type: :results).wait
+    end
+    assert result.total.positive?
+  end
+
+  test "sorting appends a primary key tiebreak without duplicating an explicit one" do
+    sorted = @adapter.send(
+      :apply_sorting, Article.all, [Noiseless::AST::Sort.new(:status, :desc)], Article
+    )
+    assert_match(/"status" DESC, "id" ASC/, sorted.to_sql)
+
+    unsorted = @adapter.send(:apply_sorting, Article.all, [], Article)
+    assert_match(/"id" ASC/, unsorted.to_sql)
+
+    explicit = @adapter.send(
+      :apply_sorting, Article.all, [Noiseless::AST::Sort.new(:id, :desc)], Article
+    )
+    assert_equal 1, explicit.to_sql.scan('"id"').size
+  end
+
+  test "pagination without explicit sort is stable across pages" do
+    pages = [1, 2].map do |page|
+      builder = Noiseless::QueryBuilder.new(@search_model)
+      builder.paginate(page: page, per_page: 2)
+      result = Sync do
+        @adapter.search(builder.to_ast, model_class: Article, response_type: :results).wait
+      end
+      result.records.pluck(:id)
+    end
+
+    ids = pages.flatten
+    assert_equal ids, ids.uniq, "Pages must not overlap when no sort is given"
+  end
+
+  test "match omits unaccent when the extension is unavailable" do
+    node = Noiseless::AST::Match.new(:title, "cafe")
+
+    @adapter.stub(:unaccent_available?, false) do
+      scope = @adapter.send(:apply_match, Article.all, node, Article)
+      assert_not_includes scope.to_sql, "unaccent("
+    end
+
+    scope = @adapter.send(:apply_match, Article.all, node, Article)
+    assert_includes scope.to_sql, "unaccent(", "Dummy DB has unaccent; expected it to be used"
+  end
+
   private
 
   def postgresql_available?
