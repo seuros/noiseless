@@ -366,6 +366,8 @@ module Noiseless
         end
 
         def empty_response
+          # DEBUG: temporary CI diagnostics, remove before merge
+          warn "PG_EMPTY_RESPONSE from #{caller(1..3).join(' | ')}"
           {
             "took" => 0,
             "timed_out" => false,
@@ -379,6 +381,8 @@ module Noiseless
         end
 
         def error_response(error)
+          # DEBUG: temporary CI diagnostics, remove before merge
+          warn "PG_SEARCH_ERROR #{error.class}: #{error.message}\n#{Array(error.backtrace).first(15).join("\n")}"
           {
             "took" => 0,
             "timed_out" => false,
