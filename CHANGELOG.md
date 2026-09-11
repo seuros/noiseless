@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/seuros/noiseless/compare/noiseless/v0.7.1...noiseless/v0.7.2) (2026-09-11)
+
+
+### Bug Fixes
+
+* array filter semantics and fail-closed clauses for PostgreSQL adapter ([0c06698](https://github.com/seuros/noiseless/commit/0c06698e5759ada1272a25fe75c067c61b44a308))
+
 ## [0.7.1](https://github.com/seuros/noiseless/compare/noiseless/v0.7.0...noiseless/v0.7.1) (2026-09-04)
 
 
