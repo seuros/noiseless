@@ -14,6 +14,10 @@ if ENV["RAILS_VERSION"] == "dev"
 else
   gem "activesupport", ENV.fetch("RAILS_VERSION", "~> 8.1.0")
   gem "railties", ENV.fetch("RAILS_VERSION", "~> 8.1.0")
+  # json 3.0 removed the positional options arg that ActiveSupport::JSON.decode
+  # still uses in released Rails (<= 8.1.3.1); every JSON column read raises
+  # ArgumentError. Rails main is already compatible. Drop when a fixed 8.1.x ships.
+  gem "json", "< 3"
 end
 
 # Start debugger with binding.b [https://github.com/ruby/debug]
