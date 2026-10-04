@@ -73,11 +73,9 @@ module Noiseless
           end
 
           if ast_node.has_joins?
-            include_fields = ast_node.joins.map do |join_node|
-              fields = join_node.include_fields.join(", ")
-              "$#{join_node.collection}(#{fields})"
-            end
-            result[:include_fields] = include_fields.join(", ")
+            result[:include_fields] = ast_node.joins.map { "$#{it.collection}(#{it.include_fields.presence&.join(', ') || '*'})" }.join(", ")
+            inner = ast_node.joins.select(&:inner_join?).map { "$#{it.collection}(id:*)" }
+            result[:filter_by] = [result[:filter_by], *inner].compact.join(" && ") if inner.any?
           end
 
           result[:remove_duplicates] = ast_node.remove_duplicates unless ast_node.remove_duplicates.nil?
@@ -294,6 +292,7 @@ module Noiseless
           field = { name: name.to_s, type: type, optional: true }
           field[:num_dim] = config[:dims] || config[:dimension] if type == "float[]"
           field[:facet] = true if config[:facet]
+          field[:reference] = config[:reference] if config[:reference]
           field
         end
 

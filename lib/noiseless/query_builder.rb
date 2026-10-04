@@ -189,8 +189,8 @@ module Noiseless
     # @param on [Hash] Join conditions
     # @param include_fields [Array] Fields to include from joined collection
     # @param strategy [Symbol] Join strategy :left or :inner
-    def join(collection, on:, include_fields: [], strategy: :left)
-      @joins << AST::Join.new(collection, on: on, include_fields: include_fields, strategy: strategy)
+    def join(collection, include_fields: [], strategy: :left)
+      @joins << AST::Join.new(collection, include_fields:, strategy:)
       self
     end
 

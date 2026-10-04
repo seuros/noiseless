@@ -3,18 +3,17 @@
 module Noiseless
   module AST
     # Join node for cross-collection queries (Typesense feature)
-    # Allows including related documents from other collections
+    # Allows including related documents from other collections. The relation
+    # comes from a reference field in the collection schema.
     class Join < Node
-      attr_reader :collection, :on, :include_fields, :strategy
+      attr_reader :collection, :include_fields, :strategy
 
       # @param collection [String, Symbol] The collection to join
-      # @param on [Hash] Join conditions (e.g., { foreign_key: :local_key })
       # @param include_fields [Array<String, Symbol>] Fields to include from joined collection
       # @param strategy [Symbol] Join strategy :left or :inner (default: :left)
-      def initialize(collection, on:, include_fields: [], strategy: :left)
+      def initialize(collection, include_fields: [], strategy: :left)
         super()
         @collection = collection.to_s
-        @on = on
         @include_fields = Array(include_fields).map(&:to_s)
         @strategy = strategy
       end

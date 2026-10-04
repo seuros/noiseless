@@ -120,7 +120,7 @@ class TypesenseFeaturesTest < ActiveSupport::TestCase
 
   def test_join_creates_ast_node
     builder = Noiseless::QueryBuilder.new(@model)
-    builder.join(:products, on: { product_id: :id }, include_fields: %i[name price])
+    builder.join(:products, include_fields: %i[name price])
 
     ast = builder.to_ast
     assert_predicate ast, :has_joins?
@@ -128,14 +128,13 @@ class TypesenseFeaturesTest < ActiveSupport::TestCase
 
     join = ast.joins.first
     assert_equal "products", join.collection
-    assert_equal({ product_id: :id }, join.on)
     assert_equal %w[name price], join.include_fields
   end
 
   def test_multiple_joins
     builder = Noiseless::QueryBuilder.new(@model)
-    builder.join(:products, on: { product_id: :id }, include_fields: [:name])
-           .join(:categories, on: { category_id: :id }, include_fields: [:title])
+    builder.join(:products, include_fields: [:name])
+           .join(:categories, include_fields: [:title])
 
     ast = builder.to_ast
     assert_equal 2, ast.joins.size
@@ -143,16 +142,17 @@ class TypesenseFeaturesTest < ActiveSupport::TestCase
 
   def test_join_strategy
     builder = Noiseless::QueryBuilder.new(@model)
-    builder.join(:products, on: { product_id: :id }, strategy: :inner)
+    builder.join(:products, strategy: :inner)
 
     ast = builder.to_ast
     assert_predicate ast.joins.first, :inner_join?
     assert_not_predicate ast.joins.first, :left_join?
+    assert_equal "$products(id:*)", Noiseless::Adapters::Typesense.new.send(:ast_to_hash, ast)[:filter_by]
   end
 
   def test_join_default_strategy_is_left
     builder = Noiseless::QueryBuilder.new(@model)
-    builder.join(:products, on: { product_id: :id })
+    builder.join(:products)
 
     ast = builder.to_ast
     assert_predicate ast.joins.first, :left_join?
@@ -162,7 +162,7 @@ class TypesenseFeaturesTest < ActiveSupport::TestCase
     adapter = Noiseless::Adapters::Typesense.new
     builder = Noiseless::QueryBuilder.new(@model)
     builder.match(:title, "test")
-           .join(:products, on: { product_id: :id }, include_fields: %i[name price])
+           .join(:products, include_fields: %i[name price])
 
     query_hash = adapter.send(:ast_to_hash, builder.to_ast)
 
@@ -173,8 +173,8 @@ class TypesenseFeaturesTest < ActiveSupport::TestCase
   def test_typesense_multiple_joins_query_hash
     adapter = Noiseless::Adapters::Typesense.new
     builder = Noiseless::QueryBuilder.new(@model)
-    builder.join(:products, on: {}, include_fields: [:name])
-           .join(:categories, on: {}, include_fields: [:title])
+    builder.join(:products, include_fields: [:name])
+           .join(:categories, include_fields: [:title])
 
     query_hash = adapter.send(:ast_to_hash, builder.to_ast)
 
@@ -218,7 +218,7 @@ class TypesenseFeaturesTest < ActiveSupport::TestCase
     adapter = Noiseless::Adapters::Typesense.new
     builder = Noiseless::QueryBuilder.new(@model)
     builder.vector(:embedding, @test_embedding, k: 10)
-           .join(:products, on: { product_id: :id }, include_fields: [:name])
+           .join(:products, include_fields: [:name])
 
     query_hash = adapter.send(:ast_to_hash, builder.to_ast)
 
