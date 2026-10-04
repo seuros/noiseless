@@ -29,7 +29,7 @@ class ConnectionManagerTest < ActiveSupport::TestCase
     assert_match(/Unknown connection: unknown/, error.message)
   end
 
-  test "forwards configured timeout to adapter lookup" do
+  test "forwards configured timeout and adapter options to adapter lookup" do
     captured = nil
     fake_lookup = lambda do |_adapter, **params|
       captured = params
@@ -37,11 +37,13 @@ class ConnectionManagerTest < ActiveSupport::TestCase
     end
 
     Noiseless::Adapters.stub :lookup, fake_lookup do
-      @connection_manager.register(:test, adapter: :opensearch, hosts: ["http://localhost:9200"], timeout: 3)
+      @connection_manager.register(:test, adapter: :opensearch, hosts: ["http://localhost:9200"], timeout: 3,
+                                          api_key: "secret")
       @connection_manager.client(:test)
     end
 
     assert_equal 3, captured[:timeout]
+    assert_equal "secret", captured[:api_key]
     assert_equal ["http://localhost:9200"], captured[:hosts]
   end
 

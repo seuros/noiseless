@@ -96,11 +96,7 @@ module Noiseless
 
     # Register all connections statically from YAML - no runtime registration
     config.connections_config.each do |name, params|
-      adapter_name = params[:adapter]
-      hosts = params[:hosts] || []
-      register_params = { adapter: adapter_name, hosts: hosts, timeout: params[:timeout] }
-      register_params[:request_timeout] = params[:request_timeout] if params.key?(:request_timeout)
-      connections.register(name, **register_params)
+      connections.register(name, **params, hosts: params[:hosts] || [])
     end
   end
 

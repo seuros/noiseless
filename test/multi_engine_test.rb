@@ -3,28 +3,10 @@
 require "test_helper"
 
 class MultiEngineTest < ActiveSupport::TestCase
-  def es_url
-    host = ENV.fetch("ELASTICSEARCH_HOST", "localhost")
-    port = ENV.fetch("ELASTICSEARCH_PORT", "9201")
-    "http://#{host}:#{port}"
-  end
-
-  def os_url
-    host = ENV.fetch("OPENSEARCH_HOST", "localhost")
-    port = ENV.fetch("OPENSEARCH_PORT", "9202")
-    "http://#{host}:#{port}"
-  end
-
-  def ts_url
-    host = ENV.fetch("TYPESENSE_HOST", "localhost")
-    port = ENV.fetch("TYPESENSE_PORT", "8109")
-    "http://#{host}:#{port}"
-  end
-
   test "all three adapters can be instantiated" do
-    elasticsearch = Noiseless::Adapters.lookup(:elasticsearch, hosts: [es_url])
-    opensearch = Noiseless::Adapters.lookup(:open_search, hosts: [os_url])
-    typesense = Noiseless::Adapters.lookup(:typesense, hosts: [ts_url])
+    elasticsearch = Noiseless.connections.client(:primary)
+    opensearch = Noiseless.connections.client(:opensearch)
+    typesense = Noiseless.connections.client(:typesense)
 
     assert_instance_of Noiseless::Adapters::Elasticsearch, elasticsearch
     assert_instance_of Noiseless::Adapters::OpenSearch, opensearch
@@ -48,7 +30,7 @@ class MultiEngineTest < ActiveSupport::TestCase
     )
 
     # Test Elasticsearch format
-    elasticsearch = Noiseless::Adapters::Elasticsearch.new(hosts: [es_url])
+    elasticsearch = Noiseless.connections.client(:primary)
     es_query = elasticsearch.send(:ast_to_hash, root_node)
 
     assert_includes es_query.keys, :query
@@ -57,20 +39,21 @@ class MultiEngineTest < ActiveSupport::TestCase
     assert_includes es_query[:query][:bool].keys, :filter
 
     # Test OpenSearch format (should be similar to Elasticsearch)
-    opensearch = Noiseless::Adapters::OpenSearch.new(hosts: [os_url])
+    opensearch = Noiseless.connections.client(:opensearch)
     os_query = opensearch.send(:ast_to_hash, root_node)
 
     # OpenSearch should have same structure as Elasticsearch
     assert_equal es_query, os_query
 
     # Test Typesense format (should be completely different)
-    typesense = Noiseless::Adapters::Typesense.new(hosts: [ts_url])
+    typesense = Noiseless.connections.client(:typesense)
     ts_query = typesense.send(:ast_to_hash, root_node)
 
     assert_includes ts_query.keys, :q
     assert_includes ts_query.keys, :filter_by
     assert_includes ts_query.keys, :sort_by
-    assert_equal "title:Ruby", ts_query[:q]
+    assert_equal "Ruby", ts_query[:q]
+    assert_equal "title", ts_query[:query_by]
     assert_equal "status:=published", ts_query[:filter_by]
     assert_equal "created_at:desc", ts_query[:sort_by]
 
@@ -92,9 +75,9 @@ class MultiEngineTest < ActiveSupport::TestCase
     )
 
     # All adapters should be able to execute the same AST
-    elasticsearch = Noiseless::Adapters::Elasticsearch.new(hosts: [es_url])
-    opensearch = Noiseless::Adapters::OpenSearch.new(hosts: [os_url])
-    typesense = Noiseless::Adapters::Typesense.new(hosts: [ts_url])
+    elasticsearch = Noiseless.connections.client(:primary)
+    opensearch = Noiseless.connections.client(:opensearch)
+    typesense = Noiseless.connections.client(:typesense)
 
     # Searching a missing index now raises instead of returning an empty
     # response, so the index must exist before querying it.
@@ -104,6 +87,7 @@ class MultiEngineTest < ActiveSupport::TestCase
       rescue Noiseless::RequestError
         # index already exists from a previous run
       end
+      typesense.create_index("posts", mappings: { "properties" => { "title" => { "type" => "text" } } }).wait
     end
 
     # Search returns Async::Task, need to wait for results
@@ -129,7 +113,7 @@ class MultiEngineTest < ActiveSupport::TestCase
     assert_respond_to ts_response, :total
   ensure
     Sync do
-      [elasticsearch, opensearch].compact.each do |adapter|
+      [elasticsearch, opensearch, typesense].compact.each do |adapter|
         adapter.delete_index("posts").wait
       rescue Noiseless::RequestError
         nil

@@ -15,11 +15,9 @@ module Noiseless
         def ast_to_hash(ast_node)
           result = {}
 
-          # Build search query from match nodes
           query_parts = build_search_query(ast_node.bool)
-          result[:q] = query_parts unless query_parts.empty?
+          result[:q] = query_parts.empty? ? "*" : query_parts
 
-          # Build query_by from multi_match nodes
           query_by_fields = build_query_by_fields(ast_node.bool)
           result[:query_by] = query_by_fields unless query_by_fields.empty?
 
@@ -107,34 +105,22 @@ module Noiseless
         end
 
         def build_search_query(bool_node)
-          # Combine all match queries into a single search string
-          queries = bool_node.must.filter_map do |node|
+          bool_node.must.filter_map do |node|
             case node
-            when AST::Match
-              "#{node.field}:#{node.value}"
-            when AST::MultiMatch
-              # For Typesense, multi_match becomes a broader search across fields
-              node.query
-            when AST::Range
-              # Range queries are handled in filters, not search
-              nil
-            else
-              node.respond_to?(:value) ? "#{node.field}:#{node.value}" : nil
+            when AST::Match then node.value.to_s
+            when AST::MultiMatch then node.query.to_s
             end
-          end
-          queries.join(" ")
+          end.join(" ")
         end
 
         def build_query_by_fields(bool_node)
-          # Extract fields from multi_match nodes for Typesense query_by parameter
-          fields = bool_node.must.filter_map do |node|
+          bool_node.must.flat_map do |node|
             case node
-            when AST::MultiMatch
-              node.fields
+            when AST::Match then [node.field.to_s]
+            when AST::MultiMatch then node.fields.map(&:to_s)
+            else []
             end
-          end.flatten.uniq
-
-          fields.join(",")
+          end.uniq.join(",")
         end
 
         def build_filter_expression(bool_node)
@@ -174,14 +160,13 @@ module Noiseless
           }
         end
 
-        def execute_search(query_hash, collections: [], **_opts)
-          collection_path = collections.any? ? "/collections/#{collections.first}/documents/search" : "/multi_search"
+        def execute_search(query_hash, indexes: [], **_opts)
+          collection = Array(indexes).first
+          raise Noiseless::SearchError, "Typesense search needs a collection" unless collection
 
           # Convert query_hash to URL params for Typesense
           params = query_hash.map { |k, v| "#{k}=#{CGI.escape(v.to_s)}" }.join("&")
-          path = "#{collection_path}?#{params}"
-
-          response = get_request(path)
+          response = get_request("/collections/#{collection}/documents/search?#{params}")
           result = JSON.parse(response.read)
 
           # Convert Typesense format to Elasticsearch-like format
@@ -194,7 +179,7 @@ module Noiseless
               max_score: nil,
               hits: (result["hits"] || []).map do |hit|
                 {
-                  _index: collections.first || "typesense",
+                  _index: collection,
                   _type: "_doc",
                   _id: hit["document"]["id"],
                   _score: hit["text_match"] || 1.0,

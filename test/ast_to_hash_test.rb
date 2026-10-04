@@ -3,14 +3,8 @@
 require "test_helper"
 
 class AstToHashTest < ActiveSupport::TestCase
-  def es_url
-    host = ENV.fetch("ELASTICSEARCH_HOST", "localhost")
-    port = ENV.fetch("ELASTICSEARCH_PORT", "9201")
-    "http://#{host}:#{port}"
-  end
-
   setup do
-    @adapter = Noiseless::Adapters::Elasticsearch.new(hosts: [es_url])
+    @adapter = Noiseless.connections.client(:primary)
   end
 
   test "converts simple match query to hash" do

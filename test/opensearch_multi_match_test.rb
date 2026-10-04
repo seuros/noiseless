@@ -3,12 +3,6 @@
 require "test_helper"
 
 class OpenSearchMultiMatchTest < ActiveSupport::TestCase
-  def os_url
-    host = ENV.fetch("OPENSEARCH_HOST", "localhost")
-    port = ENV.fetch("OPENSEARCH_PORT", "9202")
-    "http://#{host}:#{port}"
-  end
-
   def setup
     @model = Class.new do
       extend Noiseless::DSL::ClassMethods
@@ -89,7 +83,7 @@ class OpenSearchMultiMatchTest < ActiveSupport::TestCase
   end
 
   def test_async_opensearch_adapter_builds_multi_match_query
-    adapter = Noiseless::Adapters::OpenSearch.new(hosts: [os_url])
+    adapter = Noiseless.connections.client(:opensearch)
 
     # Create a bool node with a multi_match
     multi_match = Noiseless::AST::MultiMatch.new("async test query", %w[title body])

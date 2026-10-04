@@ -3,18 +3,12 @@
 require "test_helper"
 
 class TypesenseAdapterTest < ActiveSupport::TestCase
-  def ts_url
-    host = ENV.fetch("TYPESENSE_HOST", "localhost")
-    port = ENV.fetch("TYPESENSE_PORT", "8109")
-    "http://#{host}:#{port}"
-  end
-
   setup do
-    @adapter = Noiseless::Adapters::Typesense.new(hosts: [ts_url])
+    @adapter = Noiseless.connections.client(:typesense)
   end
 
   test "looks up Typesense adapter via dynamic class loading" do
-    adapter = Noiseless::Adapters.lookup(:typesense, hosts: [ts_url])
+    adapter = Noiseless.connections.client(:typesense)
     assert_instance_of Noiseless::Adapters::Typesense, adapter
   end
 
@@ -33,7 +27,8 @@ class TypesenseAdapterTest < ActiveSupport::TestCase
     query_hash = @adapter.send(:ast_to_hash, root_node)
 
     expected = {
-      q: "title:Ruby",
+      q: "Ruby",
+      query_by: "title",
       page: 1,
       per_page: 20
     }
@@ -68,7 +63,8 @@ class TypesenseAdapterTest < ActiveSupport::TestCase
     query_hash = @adapter.send(:ast_to_hash, root_node)
 
     expected = {
-      q: "title:Ruby content:programming",
+      q: "Ruby programming",
+      query_by: "title,content",
       filter_by: "status:=published && category:=tech",
       sort_by: "created_at:desc,title:asc",
       page: 2,
@@ -90,6 +86,7 @@ class TypesenseAdapterTest < ActiveSupport::TestCase
     query_hash = @adapter.send(:ast_to_hash, root_node)
 
     expected = {
+      q: "*",
       page: 1,
       per_page: 20
     }
@@ -112,6 +109,7 @@ class TypesenseAdapterTest < ActiveSupport::TestCase
     query_hash = @adapter.send(:ast_to_hash, root_node)
 
     expected = {
+      q: "*",
       filter_by: "status:=published",
       page: 1,
       per_page: 20

@@ -7,6 +7,10 @@ class IntegrationTest < ActiveSupport::TestCase
   # Dedicated index so seeding here can't clash with the mapping other tests
   # create for "articles" (the published_at sort needs a date field).
   TEST_INDEX = "noiseless_integration_articles"
+  TYPESENSE_MAPPINGS = {
+    "properties" => %w[title content status category].to_h { |field| [field, { "type" => "text" }] }
+                                                     .merge("published_at" => { "type" => "date" })
+  }.freeze
 
   def setup
     @bulk_data = [
@@ -18,8 +22,9 @@ class IntegrationTest < ActiveSupport::TestCase
 
   def teardown
     Sync do
-      [Noiseless::Adapters::Elasticsearch.new(hosts: [es_url]),
-       Noiseless::Adapters::OpenSearch.new(hosts: [os_url])].each do |adapter|
+      [Noiseless.connections.client(:primary),
+       Noiseless.connections.client(:opensearch),
+       Noiseless.connections.client(:typesense)].each do |adapter|
         adapter.delete_index(TEST_INDEX).wait
       rescue Noiseless::RequestError
         # index was not created by this test
@@ -28,21 +33,21 @@ class IntegrationTest < ActiveSupport::TestCase
   end
 
   def test_base_adapter_async_interface
-    adapter = Noiseless::Adapter.new(hosts: [es_url])
+    adapter = Noiseless::Adapter.new(hosts: Noiseless.config.connections_config.dig(:primary, :hosts))
 
     assert_async_bulk(adapter)
     assert_async_search(adapter)
   end
 
   def test_elasticsearch_adapter_async_interface
-    adapter = Noiseless::Adapters::Elasticsearch.new(hosts: [es_url])
+    adapter = Noiseless.connections.client(:primary)
 
     assert_async_bulk(adapter)
     assert_async_search(adapter)
   end
 
   def test_opensearch_adapter_async_interface
-    adapter = Noiseless::Adapters::OpenSearch.new(hosts: [os_url])
+    adapter = Noiseless.connections.client(:opensearch)
 
     assert_async_bulk(adapter)
     assert_async_search(adapter)
@@ -50,7 +55,8 @@ class IntegrationTest < ActiveSupport::TestCase
   end
 
   def test_typesense_adapter_async_interface
-    adapter = Noiseless::Adapters::Typesense.new(hosts: [ts_url])
+    adapter = Noiseless.connections.client(:typesense)
+    Sync { adapter.create_index(TEST_INDEX, mappings: TYPESENSE_MAPPINGS).wait }
 
     assert_async_bulk(adapter)
     assert_async_search(adapter)
@@ -161,23 +167,5 @@ class IntegrationTest < ActiveSupport::TestCase
       sort: [sort_node],
       paginate: nil
     )
-  end
-
-  def es_url
-    host = ENV.fetch("ELASTICSEARCH_HOST", "localhost")
-    port = ENV.fetch("ELASTICSEARCH_PORT", "9201")
-    "http://#{host}:#{port}"
-  end
-
-  def os_url
-    host = ENV.fetch("OPENSEARCH_HOST", "localhost")
-    port = ENV.fetch("OPENSEARCH_PORT", "9202")
-    "http://#{host}:#{port}"
-  end
-
-  def ts_url
-    host = ENV.fetch("TYPESENSE_HOST", "localhost")
-    port = ENV.fetch("TYPESENSE_PORT", "8109")
-    "http://#{host}:#{port}"
   end
 end

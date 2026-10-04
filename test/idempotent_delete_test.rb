@@ -7,7 +7,7 @@ class IdempotentDeleteTest < ActiveSupport::TestCase
 
   def test_elasticsearch_delete_missing_index_does_not_raise
     Sync do
-      result = adapter_for(es_url).delete_index(MISSING_INDEX).wait
+      result = Noiseless.connections.client(:primary).delete_index(MISSING_INDEX).wait
 
       assert_equal "not_found", result["result"]
       assert result["acknowledged"]
@@ -25,7 +25,7 @@ class IdempotentDeleteTest < ActiveSupport::TestCase
 
   def test_elasticsearch_delete_missing_document_does_not_raise
     Sync do
-      result = adapter_for(es_url).delete_document(index: MISSING_INDEX, id: "nope").wait
+      result = Noiseless.connections.client(:primary).delete_document(index: MISSING_INDEX, id: "nope").wait
 
       assert_equal "not_found", result["result"]
       assert_equal MISSING_INDEX, result["_index"]
@@ -80,23 +80,7 @@ class IdempotentDeleteTest < ActiveSupport::TestCase
 
   private
 
-  def adapter_for(url)
-    Noiseless::Adapters::Elasticsearch.new(hosts: [url])
-  end
-
   def os_adapter
-    Noiseless::Adapters::OpenSearch.new(hosts: [os_url])
-  end
-
-  def es_url
-    host = ENV.fetch("ELASTICSEARCH_HOST", "localhost")
-    port = ENV.fetch("ELASTICSEARCH_PORT", "9201")
-    "http://#{host}:#{port}"
-  end
-
-  def os_url
-    host = ENV.fetch("OPENSEARCH_HOST", "localhost")
-    port = ENV.fetch("OPENSEARCH_PORT", "9202")
-    "http://#{host}:#{port}"
+    Noiseless.connections.client(:opensearch)
   end
 end
