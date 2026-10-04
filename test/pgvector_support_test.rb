@@ -35,6 +35,37 @@ class PgvectorSupportTest < ActiveSupport::TestCase
     end
   end
 
+  test "vector search returns nothing without pgvector instead of every row" do
+    Article.create!(title: "t", content: "c", author: "a")
+
+    @adapter.stub(:pgvector_available?, false) do
+      assert_not @adapter.vector_search(Article.all, [0.1]).exists?
+    end
+  end
+
+  test "vector search pages within the k nearest rows" do
+    with_vector_table do |model|
+      model.connection.execute(<<~SQL.squish)
+        INSERT INTO vector_docs (label, "Embedding") VALUES
+        ('a', '[1,0,0]'), ('b', '[0.9,0.1,0]'), ('c', '[0.5,0.5,0]'), ('d', '[0.1,1,0]'), ('e', '[0,0,1]')
+      SQL
+
+      root = Noiseless::AST::Root.new(
+        indexes: ["vector_docs"],
+        bool: Noiseless::AST::Bool.new(must: [], filter: []),
+        sort: [],
+        paginate: Noiseless::AST::Paginate.new(2, 3),
+        vector: Noiseless::AST::Vector.new("Embedding", [1, 0, 0], k: 4)
+      )
+      result = @adapter.stub(:pgvector_available?, true) do
+        Sync { @adapter.search(root, model_class: model, response_type: :results).wait }
+      end
+
+      assert_equal %w[d], result.records.pluck(:label)
+      assert_equal 4, result.total
+    end
+  end
+
   test "batch_store_embeddings writes through an integer primary key and quotes identifiers" do
     with_vector_table do |model|
       first, second = model.create!([{ label: "a" }, { label: "b" }])

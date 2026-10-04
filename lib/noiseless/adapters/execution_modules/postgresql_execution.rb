@@ -36,14 +36,8 @@ module Noiseless
           vector_node = query_hash[:vector]
           return empty_response unless vector_node && pgvector_available?
 
-          # Start with base scope
-          scope = model.all
-
-          # Apply any filters first
-          scope = apply_filter_clauses(scope, query_hash[:bool]&.filter || [], model)
-
-          # Apply vector search
-          scope = vector_search(
+          scope = apply_filter_clauses(model.all, query_hash[:bool]&.filter || [], model)
+          neighbors = vector_search(
             scope,
             vector_node.embedding,
             column: vector_node.field,
@@ -51,13 +45,26 @@ module Noiseless
             distance_metric: vector_node.distance_metric
           )
 
-          records = scope.to_a
-          format_vector_response(records, model, vector_node)
+          paginate_node = query_hash[:paginate]
+          return format_vector_response(neighbors.to_a, model) unless paginate_node
+
+          records = paginate_neighbors(neighbors, paginate_node, vector_node.k).to_a
+          format_vector_response(records, model, total: [scope.count, vector_node.k].min)
         rescue StandardError => e
           error_response(e)
         end
 
-        def format_vector_response(records, model, _vector_node)
+        def paginate_neighbors(scope, paginate_node, k)
+          page = paginate_node.page || 1
+          per_page = paginate_node.per_page || DEFAULT_LIMIT
+          offset = (page - 1) * per_page
+          limit = (k - offset).clamp(0, per_page)
+          return scope.none if limit.zero?
+
+          scope.limit(limit).offset(offset)
+        end
+
+        def format_vector_response(records, model, total: records.size)
           hits = records.map do |record|
             distance = record.respond_to?(:vector_distance) ? record.vector_distance : 0
             {
@@ -73,7 +80,7 @@ module Noiseless
             "timed_out" => false,
             "_shards" => { "total" => 1, "successful" => 1, "skipped" => 0, "failed" => 0 },
             "hits" => {
-              "total" => { "value" => hits.size, "relation" => "eq" },
+              "total" => { "value" => total, "relation" => "eq" },
               "max_score" => hits.first&.dig("_score"),
               "hits" => hits
             }
@@ -269,6 +276,8 @@ module Noiseless
 
             scope = if value.is_a?(Hash) && value.with_indifferent_access.key?(:geo_distance)
                       apply_geo_filter(scope, node, model)
+                    elsif range_filter?(value)
+                      apply_range(scope, AST::Range.new(node.field, **value.transform_keys(&:to_sym)), model)
                     elsif model && !column?(model, node.field.to_s)
                       # A filter on a mapping-only field cannot be enforced;
                       # silently dropping it would broaden results, so fail closed.
@@ -432,11 +441,16 @@ module Noiseless
 
         def text_column?(model, field)
           column = model.columns_hash[field.to_s]
-          column && %i[string text citext].include?(column.type) && !column.array
+          column && %i[string text citext].include?(column.type) && !array_column?(model, field)
         end
 
         def array_column?(model, field)
-          model.columns_hash[field.to_s]&.array
+          column = model.columns_hash[field.to_s]
+          column.respond_to?(:array) && column.array
+        end
+
+        def range_filter?(value)
+          value.is_a?(Hash) && value.any? && (value.keys.map(&:to_sym) - Noiseless::Adapter::RANGE_OPERATORS).empty?
         end
 
         def fuzzy_column(field)

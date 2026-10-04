@@ -299,6 +299,34 @@ class PostgresqlIntegrationTest < ActiveSupport::TestCase
     assert_includes scope.to_sql, "unaccent(", "Dummy DB has unaccent; expected it to be used"
   end
 
+  test "range-shaped filters build a range predicate like ES/OpenSearch" do
+    threshold = Article.average(:view_count).to_i
+    builder = Noiseless::QueryBuilder.new(@search_model)
+    builder.filter(:view_count, { "gte" => threshold })
+    result = Sync do
+      @adapter.search(builder.to_ast, model_class: Article, response_type: :results).wait
+    end
+
+    assert_equal Article.where(view_count: threshold..).count, result.total
+  end
+
+  test "filters work for a model on a non-PostgreSQL connection" do
+    model = Class.new(ActiveRecord::Base) do
+      self.table_name = "docs"
+      def self.name = "SqliteDoc"
+    end
+    model.establish_connection(adapter: "sqlite3", database: ":memory:")
+    model.connection.create_table(:docs) { |t| t.string :status }
+    model.create!([{ status: "open" }, { status: "closed" }])
+
+    scope = @adapter.send(
+      :apply_filter_clauses, model.all, [Noiseless::AST::Filter.new(:status, "open")], model
+    )
+    assert_equal ["open"], scope.pluck(:status)
+  ensure
+    model&.remove_connection
+  end
+
   test "geo filter quotes the column and accepts symbol or string keyed points" do
     [
       { geo_distance: { distance: "10km", title: { lat: 48.85, lon: 2.35 } } },

@@ -26,7 +26,7 @@ module Noiseless
         #
         def vector_search(scope, embedding, column: :embedding, limit: 20, distance_threshold: nil,
                           distance_metric: :cosine)
-          return scope unless pgvector_available?
+          return scope.none unless pgvector_available?
 
           vector_string = vector_literal(embedding)
           distance_op = distance_operator(distance_metric)
@@ -63,7 +63,7 @@ module Noiseless
         #
         def hybrid_search(scope, text_query:, embedding:, text_fields:, vector_column: :embedding,
                           text_weight: 0.5, vector_weight: 0.5, limit: 20)
-          return scope unless pgvector_available?
+          return scope.none unless pgvector_available?
 
           vector_string = vector_literal(embedding)
           text_weight = Float(text_weight)
