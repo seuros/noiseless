@@ -18,11 +18,11 @@ Gem::Specification.new do |spec|
   spec.files         = Dir["lib/**/*", "README.md", "LICENSE.txt"]
   spec.require_paths = ["lib"]
 
-  spec.add_dependency "activesupport", "~> 8.1"
-  spec.add_dependency "async", "~> 2.45"
-  spec.add_dependency "async-http", "~> 0.103"
-  spec.add_dependency "async-pool", "~> 0.11"
-  spec.add_dependency "railties", "~> 8.1"
+  spec.add_dependency "activesupport", "~> 8.1", ">= 8.1.4"
+  spec.add_dependency "async", "~> 2.46"
+  spec.add_dependency "async-http", "~> 0.105"
+  spec.add_dependency "io-event", ">= 1.22.1"
+  spec.add_dependency "railties", "~> 8.1", ">= 8.1.4"
   spec.add_dependency "zeitwerk", "~> 2.8"
   # rubocop:disable Gemspec/DevelopmentDependencies
   spec.add_development_dependency "async-safe", "~> 0.5"

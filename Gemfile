@@ -5,19 +5,15 @@ source "https://rubygems.org"
 # Specify your gem's dependencies in noiseless.gemspec.
 gemspec
 
-gem "rubocop", require: false
+gem "rubocop", ">= 1.84", require: false
 
 # Support testing against Rails edge/development branch
 if ENV["RAILS_VERSION"] == "dev"
   gem "activesupport", github: "rails/rails", branch: "main"
   gem "railties", github: "rails/rails", branch: "main"
 else
-  gem "activesupport", ENV.fetch("RAILS_VERSION", "~> 8.1.0")
-  gem "railties", ENV.fetch("RAILS_VERSION", "~> 8.1.0")
-  # json 3.0 removed the positional options arg that ActiveSupport::JSON.decode
-  # still uses in released Rails (<= 8.1.3.1); every JSON column read raises
-  # ArgumentError. Rails main is already compatible. Drop when a fixed 8.1.x ships.
-  gem "json", "< 3"
+  gem "activesupport", ENV.fetch("RAILS_VERSION", "~> 8.1.4")
+  gem "railties", ENV.fetch("RAILS_VERSION", "~> 8.1.4")
 end
 
 # Start debugger with binding.b [https://github.com/ruby/debug]

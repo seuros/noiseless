@@ -19,7 +19,8 @@ module Noiseless
           SocketError,
           IOError,
           IO::TimeoutError,
-          Timeout::Error
+          Timeout::Error,
+          Protocol::HTTP::Error
         ].freeze
 
         # Default per-operation IO timeout (seconds) for the search backend.
@@ -39,13 +40,24 @@ module Noiseless
         # deadline (long bulk imports may need a higher value or nil).
         DEFAULT_REQUEST_TIMEOUT = 30
 
+        # Default cap on concurrent connections per host. Without it the pool
+        # opens one socket per concurrent request. Waiting for a free
+        # connection counts against request_timeout. Override per-connection
+        # with +pool_limit:+.
+        DEFAULT_POOL_LIMIT = 16
+
         BufferedResponse = Data.define(:status, :body) do
           def read = body
           def success? = (200..299).cover?(status)
           def close = nil
         end
 
-        def initialize(hosts: [], timeout: DEFAULT_TIMEOUT, request_timeout: DEFAULT_REQUEST_TIMEOUT, **connection_params)
+        def initialize(hosts: [], timeout: DEFAULT_TIMEOUT, request_timeout: DEFAULT_REQUEST_TIMEOUT,
+                       pool_limit: DEFAULT_POOL_LIMIT, **connection_params)
+          unless request_timeout.nil? || (request_timeout.is_a?(Numeric) && request_timeout.positive? && request_timeout.finite?)
+            raise ArgumentError, "request_timeout must be a positive finite number or nil, got #{request_timeout.inspect}"
+          end
+
           # Ensure we always have at least one host
           hosts_array = Array(hosts)
           @hosts = hosts_array.empty? ? ["http://localhost:#{default_port}"] : hosts_array
@@ -59,7 +71,7 @@ module Noiseless
           @clients = {}
           @hosts.each do |host|
             endpoint = Async::HTTP::Endpoint.parse(host, timeout: @timeout)
-            @clients[host] = Async::HTTP::Client.new(endpoint)
+            @clients[host] = Async::HTTP::Client.new(endpoint, limit: pool_limit)
           end
 
           super(hosts: @hosts, **connection_params)

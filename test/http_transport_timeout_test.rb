@@ -66,4 +66,36 @@ class HttpTransportTimeoutTest < ActiveSupport::TestCase
     assert_equal Noiseless::Adapters::ExecutionModules::HttpTransport::DEFAULT_REQUEST_TIMEOUT,
                  manager.client(:defaulted).instance_variable_get(:@request_timeout)
   end
+
+  test "rejects a non-finite request_timeout and caps connections per host" do
+    assert_raises(ArgumentError) do
+      Noiseless::Adapters.lookup(:open_search, hosts: ["http://127.0.0.1:1"], request_timeout: Float::INFINITY)
+    end
+
+    server = TCPServer.new("127.0.0.1", 0)
+    connections = Thread::Queue.new
+    acceptor = Thread.new do
+      loop do
+        socket = server.accept
+        connections << socket
+        Thread.new(socket) do |s|
+          while s.gets("\r\n\r\n")
+            sleep 0.05
+            s.write("HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\n\r\n{}")
+          end
+        rescue IOError, Errno::ECONNRESET
+          nil
+        end
+      end
+    end
+
+    adapter = Noiseless::Adapters.lookup(:open_search, hosts: ["http://127.0.0.1:#{server.addr[1]}"], pool_limit: 4)
+    Sync { Array.new(12) { Async { adapter.send(:get_request, "/") } }.each(&:wait) }
+
+    assert_operator connections.size, :<=, 4
+  ensure
+    adapter&.close
+    acceptor&.kill
+    server&.close
+  end
 end

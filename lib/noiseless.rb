@@ -11,7 +11,6 @@ require "singleton"
 require "async"
 require "async/http/endpoint"
 require "async/http/client"
-require "async/pool"
 require_relative "noiseless/version"
 
 module Noiseless

@@ -88,19 +88,19 @@ class CallbacksTest < ActiveSupport::TestCase
     assert Noiseless::ConnectionError < Noiseless::Error
   end
 
-  test "transport wraps a refused connection in Noiseless::ConnectionError" do
+  test "transport wraps refused and reset connections in Noiseless::ConnectionError" do
     host = "http://127.0.0.1:1"
-    refusing_client = Object.new
-    def refusing_client.get(*)
-      raise Errno::ECONNREFUSED, "Connection refused - connect(2) for 127.0.0.1:1"
+    [Errno::ECONNREFUSED, Protocol::HTTP::RemoteError].each do |failure|
+      client = Object.new
+      client.define_singleton_method(:get) { |*| raise failure, "connection failed" }
+
+      transport = Object.new.extend(Transport)
+      transport.instance_variable_set(:@hosts, [host])
+      transport.instance_variable_set(:@clients, { host => client })
+
+      error = assert_raises(Noiseless::ConnectionError) { transport.send(:get_request, "/") }
+      assert_instance_of failure, error.cause, "original error preserved as cause"
     end
-
-    transport = Object.new.extend(Transport)
-    transport.instance_variable_set(:@hosts, [host])
-    transport.instance_variable_set(:@clients, { host => refusing_client })
-
-    error = assert_raises(Noiseless::ConnectionError) { transport.send(:get_request, "/") }
-    assert_instance_of Errno::ECONNREFUSED, error.cause, "original error preserved as cause"
   end
 
   test "transport wraps timeout while reading response body in Noiseless::ConnectionError" do

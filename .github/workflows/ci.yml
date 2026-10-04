@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         ruby: ["4.0"]
-        rails-version: ["~> 8.1.1", "dev"]
+        rails-version: ["~> 8.1.4", "dev"]
 
     env:
       RAILS_ENV: test
