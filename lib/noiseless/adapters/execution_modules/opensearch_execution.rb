@@ -113,14 +113,8 @@ module Noiseless
           response&.close
         end
 
-        def execute_point_in_time_search(query_hash, pit_id:, **_opts)
-          body = JSON.generate(query_hash.merge(pit: { id: pit_id }))
-
-          response = post_request("/_search", body)
-          parse_json_response!(response, error_class: Noiseless::SearchError, context: "point-in-time search")
-        ensure
-          response&.close
-        end
+        def pit_path = "_search/point_in_time"
+        def pit_close_body(pit_id) = { pit_id: [pit_id] }
 
         def execute_search_template(template_id:, params: {}, **_opts)
           body = JSON.generate(id: template_id, params: params)

@@ -45,7 +45,7 @@ module Noiseless
       # Engine-specific capabilities
       case self.class.name
       when /OpenSearch/
-        capabilities += %i[point_in_time_search search_templates] if respond_to?(:point_in_time_search)
+        capabilities += %i[point_in_time_pagination search_templates] if respond_to?(:each_page)
       when /Typesense/
         capabilities += %i[typo_tolerance faceted_search] if respond_to?(:faceted_search)
       when /Elasticsearch/

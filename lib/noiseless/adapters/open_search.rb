@@ -10,13 +10,6 @@ module Noiseless
       ClusterAPI = Adapters::ClusterAPI
       IndicesAPI = Adapters::IndicesAPI
 
-      def point_in_time_search(ast_node, pit_id:, **)
-        query_hash = ast_to_hash(ast_node)
-        Async do
-          execute_point_in_time_search(query_hash, pit_id: pit_id, **)
-        end
-      end
-
       def search_template(template_id:, params: {}, **)
         Async do
           execute_search_template(template_id: template_id, params: params, **)

@@ -93,15 +93,8 @@ class IntegrationTest < ActiveSupport::TestCase
   end
 
   def assert_async_opensearch_features(adapter)
-    match_ast = build_match_query("search", "title")
-
-    # The PIT id and template id are bogus, so the backend rejects them.
-    # Errors are no longer swallowed into empty responses, so the tasks
-    # must surface the failure as a SearchError when awaited.
-    pit_task = adapter.point_in_time_search(match_ast, pit_id: "test_pit_id")
-    assert_kind_of Async::Task, pit_task
-    assert_raises(Noiseless::SearchError) { Sync { pit_task.wait } }
-
+    # The template id is bogus, so the backend rejects it; the failure must
+    # surface as a SearchError when awaited.
     template_task = adapter.search_template(template_id: "test_template", params: { query: "test" })
     assert_kind_of Async::Task, template_task
     assert_raises(Noiseless::SearchError) { Sync { template_task.wait } }

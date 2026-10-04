@@ -102,11 +102,7 @@ module Noiseless
           end
         end
 
-        def delete_request(path)
-          with_client do |client|
-            client.delete(path, default_headers)
-          end
-        end
+        def delete_request(path, body = nil) = body_request(:delete, path, body, "application/json")
 
         def head_request(path)
           with_client do |client|

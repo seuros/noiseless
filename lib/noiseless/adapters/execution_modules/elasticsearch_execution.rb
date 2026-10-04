@@ -42,6 +42,9 @@ module Noiseless
           response&.close
         end
 
+        def pit_path = "_pit"
+        def pit_close_body(pit_id) = { id: pit_id }
+
         def execute_cluster_health(**_opts)
           response = get_request("/_cluster/health")
           JSON.parse(response.read)
