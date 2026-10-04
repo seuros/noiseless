@@ -267,8 +267,8 @@ module Noiseless
           filter_nodes.each do |node|
             value = node.value
 
-            scope = if value.is_a?(Hash) && value[:geo_distance]
-                      apply_geo_filter(scope, node)
+            scope = if value.is_a?(Hash) && value.with_indifferent_access.key?(:geo_distance)
+                      apply_geo_filter(scope, node, model)
                     elsif model && !column?(model, node.field.to_s)
                       # A filter on a mapping-only field cannot be enforced;
                       # silently dropping it would broaden results, so fail closed.
@@ -290,26 +290,27 @@ module Noiseless
           scope.where("#{quoted_column(field)} #{operator} ARRAY[?]::#{cast}", value)
         end
 
-        def apply_geo_filter(scope, node)
-          # Requires PostGIS
-          geo_config = node.value[:geo_distance]
-          distance = geo_config[:distance]
+        # Requires PostGIS. A geo filter that cannot be enforced must narrow to
+        # nothing: dropping it would return every row regardless of distance.
+        def apply_geo_filter(scope, node, model = nil)
           field = node.field.to_s
+          return scope.none if model && !column?(model, field)
 
-          # Find the geo point in config
-          geo_point = geo_config.find { |_k, v| v.is_a?(Hash) && v[:lat] && v[:lon] }&.last
-          return scope unless geo_point
+          geo_config = node.value.with_indifferent_access[:geo_distance]
+          return scope.none unless geo_config.is_a?(Hash)
 
-          # Use PostGIS ST_DWithin for efficient geo filtering
+          geo_point = geo_config.values.find { |v| v.is_a?(Hash) && v.key?(:lat) && v.key?(:lon) }
+          return scope.none unless geo_point
+
           scope.where(
-            "ST_DWithin(#{field}::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)",
-            geo_point[:lon],
-            geo_point[:lat],
-            parse_distance(distance)
+            "ST_DWithin(#{quoted_column(field)}::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)",
+            Float(geo_point[:lon]),
+            Float(geo_point[:lat]),
+            parse_distance(geo_config[:distance])
           )
-        rescue StandardError
-          # If PostGIS not available, skip geo filter
-          scope
+        rescue ArgumentError, TypeError => e
+          Rails.logger.warn("Noiseless: geo filter on #{field} has invalid coordinates: #{e.message}")
+          scope.none
         end
 
         def apply_sorting(scope, sort_nodes, model = nil)

@@ -299,6 +299,50 @@ class PostgresqlIntegrationTest < ActiveSupport::TestCase
     assert_includes scope.to_sql, "unaccent(", "Dummy DB has unaccent; expected it to be used"
   end
 
+  test "geo filter quotes the column and accepts symbol or string keyed points" do
+    [
+      { geo_distance: { distance: "10km", title: { lat: 48.85, lon: 2.35 } } },
+      { "geo_distance" => { "distance" => "10km", "title" => { "lat" => "48.85", "lon" => "2.35" } } }
+    ].each do |value|
+      sql = @adapter.send(
+        :apply_filter_clauses, Article.all, [Noiseless::AST::Filter.new(:title, value)], Article
+      ).to_sql
+
+      assert_includes sql, %(ST_DWithin("title"::geography, ST_SetSRID(ST_MakePoint(2.35, 48.85), 4326)::geography, 10000.0))
+    end
+  end
+
+  test "geo filter fails closed on ghost fields and injected field names" do
+    ["ghost_location", "title) OR 1=1 --"].each do |field|
+      node = Noiseless::AST::Filter.new(field, { geo_distance: { distance: "10km", field => { lat: 1, lon: 2 } } })
+      scope = @adapter.send(:apply_filter_clauses, Article.all, [node], Article)
+
+      assert_not scope.exists?, "#{field.inspect} must not broaden results"
+      assert_not_includes scope.to_sql, "OR 1=1"
+    end
+
+    node = Noiseless::AST::Filter.new("title) OR 1=1 --", { geo_distance: { distance: "1km", x: { lat: 1, lon: 2 } } })
+    assert_includes @adapter.send(:apply_geo_filter, Article.all, node).to_sql,
+                    '"title) OR 1=1 --"::geography',
+                    "Without a model the field must still be quoted as an identifier"
+  end
+
+  test "geo filter with a missing or malformed point fails closed" do
+    assert Article.exists?, "Fixtures must be loaded for this test to mean anything"
+
+    [
+      { geo_distance: { distance: "10km" } },
+      { geo_distance: { distance: "10km", title: { lat: nil, lon: 2.35 } } },
+      { geo_distance: { distance: "10km", title: { lat: "north", lon: 2.35 } } },
+      { geo_distance: "10km" }
+    ].each do |value|
+      scope = @adapter.send(
+        :apply_filter_clauses, Article.all, [Noiseless::AST::Filter.new(:title, value)], Article
+      )
+      assert_not scope.exists?, "Expected #{value.inspect} to fail closed"
+    end
+  end
+
   private
 
   def postgresql_available?
