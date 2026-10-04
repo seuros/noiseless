@@ -53,7 +53,7 @@ module Noiseless
       def search(ast_node, model_class: nil, response_type: nil, **)
         query_hash = ast_to_hash(ast_node)
 
-        Async do
+        Async(finished: false) do
           raw_response = instrument(:search, indexes: ast_node.indexes, query: query_hash) do
             execute_search(query_hash, model_class: model_class, **)
           end
