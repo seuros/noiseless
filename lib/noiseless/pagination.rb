@@ -75,16 +75,16 @@ module Noiseless
 
       # Encode cursor for API response
       def encode
-        Base64.urlsafe_encode64(JSON.generate({ f: field, v: value, d: direction }))
+        [JSON.generate({ f: field, v: value, d: direction })].pack("m0").tr("+/", "-_")
       end
 
       # Decode cursor from API request
       def self.decode(encoded)
         return nil if encoded.blank?
 
-        data = JSON.parse(Base64.urlsafe_decode64(encoded))
+        data = JSON.parse(encoded.tr("-_", "+/").unpack1("m0"))
         new(field: data["f"], value: data["v"], direction: data["d"]&.to_sym || :asc)
-      rescue StandardError
+      rescue ArgumentError, JSON::ParserError
         nil
       end
 

@@ -6,7 +6,7 @@ Async-first search abstraction for Rails with multi-backend support (OpenSearch,
 
 - **Chainable DSL** — fluent query builder with runtime validation
 - **Multi-backend** — OpenSearch, Elasticsearch, Typesense, PostgreSQL adapters
-- **Async-first** — built on Ruby 3.4+ fiber scheduler with non-blocking I/O
+- **Async-first** — built on Ruby 4.0+ fiber scheduler with non-blocking I/O
 - **HTTP/2 connection pooling** — persistent connections via `Async::Pool`
 - **Rails integration** — Railtie with log subscriber and controller runtime tracking
 - **Lazy loading** — adapters loaded on-demand, test files excluded from production
@@ -17,7 +17,7 @@ Async-first search abstraction for Rails with multi-backend support (OpenSearch,
 gem "noiseless"
 ```
 
-`noiseless` is a Rails gem. It requires Ruby >= 3.4 and Rails >= 8.1.
+`noiseless` is a Rails gem. It requires Ruby >= 4.0 and Rails >= 8.1.
 
 ## Configuration
 

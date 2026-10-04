@@ -71,6 +71,8 @@ end
 
 class PostgresqlExecutionTest < ActiveSupport::TestCase
   # Test the execution module methods
+  Column = Data.define(:type)
+
   class MockModel
     def self.table_name
       "mock_models"
@@ -86,9 +88,9 @@ class PostgresqlExecutionTest < ActiveSupport::TestCase
 
     def self.columns_hash
       {
-        "id" => OpenStruct.new(type: :uuid),
-        "name" => OpenStruct.new(type: :string),
-        "description" => OpenStruct.new(type: :text)
+        "id" => Column.new(type: :uuid),
+        "name" => Column.new(type: :string),
+        "description" => Column.new(type: :text)
       }
     end
 

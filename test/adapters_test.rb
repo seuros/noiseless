@@ -26,4 +26,12 @@ class AdaptersTest < ActiveSupport::TestCase
     assert_equal({ "a" => {} }, Sync { Noiseless::Adapters::IndicesAPI.new(adapter.new(true)).get(index: "a") })
     assert_raises(Noiseless::Error) { Sync { Noiseless::Adapters::IndicesAPI.new(adapter.new(false)).get(index: "a") } }
   end
+
+  test "inspect never prints connection credentials" do
+    manager = Noiseless::ConnectionManager.new
+    manager.register(:ts, adapter: :typesense, hosts: ["http://localhost:8108"], api_key: "s3cret")
+
+    assert_not_includes manager.inspect, "s3cret"
+    assert_not_includes manager.client(:ts).inspect, "s3cret"
+  end
 end

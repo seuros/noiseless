@@ -28,5 +28,9 @@ module Noiseless
         Adapters.lookup(config[:adapter], **params)
       end
     end
+
+    private
+
+    def instance_variables_to_inspect = instance_variables - %i[@configs]
   end
 end

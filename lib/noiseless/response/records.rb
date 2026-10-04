@@ -75,8 +75,9 @@ module Noiseless
 
         # Sort records by the order they appear in search results
         sorted_records = []
+        records_by_id = loaded_records.index_by { it.id.to_s }
         hits.each_with_index do |hit, hit_index|
-          record = loaded_records.find { |r| r.id.to_s == hit["_id"].to_s }
+          record = records_by_id[hit["_id"].to_s]
           if record
             sorted_records << record
             @record_hit_map[record] = hit_index

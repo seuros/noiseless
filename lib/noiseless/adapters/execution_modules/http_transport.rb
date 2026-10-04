@@ -39,7 +39,7 @@ module Noiseless
         # deadline (long bulk imports may need a higher value or nil).
         DEFAULT_REQUEST_TIMEOUT = 30
 
-        BufferedResponse = Struct.new(:status, :body) do
+        BufferedResponse = Data.define(:status, :body) do
           def read = body
           def success? = (200..299).cover?(status)
           def close = nil

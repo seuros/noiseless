@@ -224,12 +224,10 @@ module Noiseless
         next unless model_class.respond_to?(:where)
 
         ids = model_hits.map { |hit| hit["_id"] }
-        loaded_records = model_class.where(id: ids).to_a
+        records_by_id = model_class.where(id: ids).index_by { it.id.to_s }
 
         # Sort by search relevance
-        sorted_records = model_hits.filter_map do |hit|
-          loaded_records.find { |record| record.id.to_s == hit["_id"].to_s }
-        end
+        sorted_records = model_hits.filter_map { |hit| records_by_id[hit["_id"].to_s] }
 
         records[model_key] = sorted_records
       end

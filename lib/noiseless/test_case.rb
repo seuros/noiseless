@@ -2,7 +2,6 @@
 
 require "minitest"
 require "async"
-require "set" # rubocop:disable Lint/RedundantRequireStatement
 require_relative "test_helper"
 
 module Noiseless

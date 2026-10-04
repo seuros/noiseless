@@ -127,6 +127,8 @@ module Noiseless
 
     private
 
+    def instance_variables_to_inspect = instance_variables - %i[@connection_params]
+
     # Convert AST to Hash - override in subclasses for adapter-specific format
     def ast_to_hash(ast_node)
       result = {}

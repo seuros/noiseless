@@ -167,4 +167,13 @@ class CallbacksTest < ActiveSupport::TestCase
     assert_empty filters.grep(/search_index/)
     assert_includes LenientArticle._commit_callbacks.map(&:filter), :update_search_index_on_commit
   end
+
+  test "skip_auto_index reaches Async child tasks" do
+    record = strict_record
+    record.stub(:document_manager, UnreachableDocumentManager.new) do
+      StrictArticle.skip_auto_index do
+        assert_nothing_raised { Sync { Async { record.send(:update_search_index_on_commit) }.wait } }
+      end
+    end
+  end
 end

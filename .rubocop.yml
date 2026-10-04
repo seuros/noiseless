@@ -1,5 +1,5 @@
 AllCops:
-  TargetRubyVersion: 3.4
+  TargetRubyVersion: 4.0
   NewCops: enable
   SuggestExtensions: false
   Exclude:
@@ -39,10 +39,6 @@ Metrics/CyclomaticComplexity:
 
 Metrics/PerceivedComplexity:
   Enabled: false
-
-Style/OpenStructUse:
-  Exclude:
-    - test/**/*
 
 Style/OneClassPerFile:
   Exclude:

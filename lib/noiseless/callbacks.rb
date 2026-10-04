@@ -26,11 +26,11 @@ module Noiseless
       end
 
       def skip_auto_index
-        previous_value = Thread.current[:noiseless_skip_auto_index]
-        Thread.current[:noiseless_skip_auto_index] = true
+        previous_value = Fiber[:noiseless_skip_auto_index]
+        Fiber[:noiseless_skip_auto_index] = true
         yield
       ensure
-        Thread.current[:noiseless_skip_auto_index] = previous_value
+        Fiber[:noiseless_skip_auto_index] = previous_value
       end
     end
 
@@ -38,7 +38,7 @@ module Noiseless
 
     def should_update_search_index?
       return false unless Noiseless.config.auto_index
-      return false if Thread.current[:noiseless_skip_auto_index]
+      return false if Fiber[:noiseless_skip_auto_index]
       return false unless self.class.auto_index_enabled?
 
       # Only update if we have searchable content
