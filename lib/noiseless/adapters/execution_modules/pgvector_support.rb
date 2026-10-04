@@ -64,31 +64,18 @@ module Noiseless
         def hybrid_search(scope, text_query:, embedding:, text_fields:, vector_column: :embedding,
                           text_weight: 0.5, vector_weight: 0.5, limit: 20)
           return scope.none unless pgvector_available?
+          raise ArgumentError, "hybrid_search needs text_fields to run the text query against" if text_fields.empty?
 
-          vector_string = vector_literal(embedding)
-          text_weight = Float(text_weight)
-          vector_weight = Float(vector_weight)
-          text_conditions = text_fields.map { |f| "similarity(#{quoted_column(f)}, ?)" }.join(" + ")
-          text_similarity_count = text_fields.size
+          column = quoted_column(vector_column)
+          text_score = "(#{text_fields.map { "similarity(#{quoted_column(it)}, :query)" }.join(' + ')}) / #{text_fields.size}"
+          vector_score = "(1 - (#{column} <=> '#{vector_literal(embedding)}'))"
+          combined = "#{text_score} * #{Float(text_weight)} + #{vector_score} * #{Float(vector_weight)}"
+          bind = ->(sql) { scope.sanitize_sql_array([sql, { query: text_query.to_s }]) }
 
-          # Normalized combined score
-          scope.select(
-            "#{scope.table_name}.*",
-            # Text similarity (0-1 per field, averaged)
-            Arel.sql(
-              "(#{text_conditions}) / #{text_similarity_count} * #{text_weight} AS text_score"
-            ),
-            # Vector similarity (convert distance to similarity: 1 - distance for cosine)
-            "(1 - (#{quoted_column(vector_column)} <=> '#{vector_string}')) * #{vector_weight} AS vector_score",
-            # Combined score
-            "(((#{text_conditions}) / #{text_similarity_count}) * #{text_weight} + " \
-            "(1 - (#{quoted_column(vector_column)} <=> '#{vector_string}')) * #{vector_weight}) AS combined_score"
-          ).where(
-            "#{text_conditions} > 0 OR #{quoted_column(vector_column)} IS NOT NULL",
-            *Array.new(text_similarity_count, text_query)
-          ).order(Arel.sql("combined_score DESC"))
+          scope.select("#{scope.table_name}.*", Arel.sql(bind.call("#{combined} AS combined_score")))
+               .where(bind.call("#{text_score} > 0 OR #{column} IS NOT NULL"))
+               .order(Arel.sql("combined_score DESC"))
                .limit(limit)
-               .tap { |s| s.bind_values.concat(Array.new(text_similarity_count, text_query)) }
         end
 
         # Execute a KNN (K-Nearest Neighbors) search

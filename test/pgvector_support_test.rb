@@ -66,6 +66,25 @@ class PgvectorSupportTest < ActiveSupport::TestCase
     end
   end
 
+  test "hybrid search blends trigram and vector similarity by weight" do
+    with_vector_table do |model|
+      model.connection.execute(%(INSERT INTO vector_docs (label, "Embedding") VALUES ('ruby search', '[1,0,0]'), ('go async', '[0,1,0]')))
+
+      ranked = lambda do |text_weight, vector_weight|
+        vector = Noiseless::AST::Vector.new("Embedding", [0, 1, 0], k: 2)
+        hybrid = Noiseless::AST::Hybrid.new("ruby", vector, fields: [:label], text_weight:, vector_weight:)
+        root = Noiseless::AST::Root.new(indexes: ["vector_docs"], bool: Noiseless::AST::Bool.new(must: [], filter: []),
+                                        sort: [], paginate: nil, hybrid:)
+        @adapter.stub(:pgvector_available?, true) do
+          Sync { @adapter.search(root, model_class: model, response_type: :results).wait }.records.pluck(:label)
+        end
+      end
+
+      assert_equal ["ruby search", "go async"], ranked.call(0.9, 0.1)
+      assert_equal ["go async", "ruby search"], ranked.call(0.1, 0.9)
+    end
+  end
+
   test "batch_store_embeddings writes through an integer primary key and quotes identifiers" do
     with_vector_table do |model|
       first, second = model.create!([{ label: "a" }, { label: "b" }])

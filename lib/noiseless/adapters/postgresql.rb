@@ -44,7 +44,8 @@ module Noiseless
           sort: ast_node.sort,
           paginate: ast_node.paginate,
           indexes: ast_node.indexes,  # maps to table/model
-          vector: ast_node.vector     # for pgvector semantic search
+          vector: ast_node.vector,    # for pgvector semantic search
+          hybrid: ast_node.hybrid
         }
       end
 

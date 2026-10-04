@@ -21,7 +21,7 @@ module Noiseless
           raise Noiseless::SearchError, "no ActiveRecord model for index #{query_hash[:indexes]&.first.inspect}" unless model
 
           with_search_errors do
-            next execute_vector_search(model, query_hash) if query_hash[:vector]
+            next execute_vector_search(model, query_hash) if query_hash[:vector] || query_hash[:hybrid]
 
             scope = build_search_scope(model, query_hash)
             total = scope.except(:order, :limit, :offset).count
@@ -42,23 +42,30 @@ module Noiseless
         end
 
         def execute_vector_search(model, query_hash)
-          vector_node = query_hash[:vector]
           raise Noiseless::SearchError, "vector search requires the pgvector extension" unless pgvector_available?
 
           scope = apply_filter_clauses(model.all, query_hash[:bool]&.filter || [], model)
-          neighbors = vector_search(
-            scope,
-            vector_node.embedding,
-            column: vector_node.field,
-            limit: vector_node.k,
-            distance_metric: vector_node.distance_metric
-          )
+          neighbors, k = nearest(scope, query_hash)
 
           paginate_node = query_hash[:paginate]
           return format_vector_response(neighbors.to_a, model) unless paginate_node
 
-          records = paginate_neighbors(neighbors, paginate_node, vector_node.k).to_a
-          format_vector_response(records, model, total: [scope.count, vector_node.k].min)
+          records = paginate_neighbors(neighbors, paginate_node, k).to_a
+          format_vector_response(records, model, total: [scope.count, k].min)
+        end
+
+        def nearest(scope, query_hash)
+          if (hybrid = query_hash[:hybrid])
+            vector = hybrid.vector
+            neighbors = hybrid_search(scope, text_query: hybrid.text_query, embedding: vector.embedding, text_fields: hybrid.fields,
+                                             vector_column: vector.field, text_weight: hybrid.text_weight,
+                                             vector_weight: hybrid.vector_weight, limit: vector.k)
+            return [neighbors, vector.k]
+          end
+
+          vector = query_hash[:vector]
+          [vector_search(scope, vector.embedding, column: vector.field, limit: vector.k, distance_metric: vector.distance_metric),
+           vector.k]
         end
 
         def paginate_neighbors(scope, paginate_node, k)
@@ -73,12 +80,16 @@ module Noiseless
 
         def format_vector_response(records, model, total: records.size)
           hits = records.map do |record|
-            distance = record.respond_to?(:vector_distance) ? record.vector_distance : 0
+            score = if record.has_attribute?(:combined_score)
+                      record.combined_score
+                    else
+                      1.0 - (record.respond_to?(:vector_distance) ? record.vector_distance : 0)
+                    end
             {
               "_index" => model.table_name,
               "_id" => record.id.to_s,
-              "_score" => 1.0 - distance, # Convert distance to similarity score
-              "_source" => record.as_json(except: [:vector_distance])
+              "_score" => score,
+              "_source" => record.as_json(except: %w[vector_distance combined_score])
             }
           end
 
