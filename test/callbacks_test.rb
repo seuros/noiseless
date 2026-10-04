@@ -176,4 +176,12 @@ class CallbacksTest < ActiveSupport::TestCase
       end
     end
   end
+
+  test "real document manager failures reach the callback error handling" do
+    Noiseless.connections.register(:callbacks_unreachable, adapter: :open_search, hosts: ["http://127.0.0.1:1"])
+    record = strict_record
+    record.define_singleton_method(:document_manager) { |**| Noiseless::DocumentManager.new(self, connection: :callbacks_unreachable) }
+
+    assert_raises(Noiseless::ConnectionError) { record.send(:update_search_index_on_commit) }
+  end
 end

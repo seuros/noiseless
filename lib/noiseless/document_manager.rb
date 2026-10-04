@@ -11,14 +11,7 @@ module Noiseless
       document = build_document
       return false unless document
 
-      client = Noiseless.connections.client(@connection)
-      client.index_document(
-        index: index_name,
-        id: document_id,
-        document: document,
-        refresh: refresh,
-        **
-      )
+      await { client.index_document(index: index_name, id: document_id, document: document, refresh: refresh, **) }
     end
 
     def update_document(refresh: false, detect_changes: true, **)
@@ -28,14 +21,7 @@ module Noiseless
         changes = extract_changes
         return false if changes.empty?
 
-        client = Noiseless.connections.client(@connection)
-        client.update_document(
-          index: index_name,
-          id: document_id,
-          changes: changes,
-          refresh: refresh,
-          **
-        )
+        await { client.update_document(index: index_name, id: document_id, changes: changes, refresh: refresh, **) }
       else
         # Fall back to full document update
         index_document(refresh: refresh, **)
@@ -43,24 +29,18 @@ module Noiseless
     end
 
     def delete_document(refresh: false, **)
-      client = Noiseless.connections.client(@connection)
-      client.delete_document(
-        index: index_name,
-        id: document_id,
-        refresh: refresh,
-        **
-      )
+      await { client.delete_document(index: index_name, id: document_id, refresh: refresh, **) }
     end
 
     def document_exists?
-      client = Noiseless.connections.client(@connection)
-      client.document_exists?(
-        index: index_name,
-        id: document_id
-      )
+      await { client.document_exists?(index: index_name, id: document_id) }
     end
 
     private
+
+    def client = Noiseless.connections.client(@connection)
+
+    def await = Sync { yield.wait }
 
     attr_reader :model_instance
 
