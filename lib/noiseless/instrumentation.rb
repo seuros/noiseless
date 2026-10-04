@@ -33,8 +33,8 @@ module Noiseless
     end
 
     def add_to_runtime(duration)
-      Thread.current[:noiseless_runtime] ||= 0
-      Thread.current[:noiseless_runtime] += duration * 1000 # Convert to milliseconds
+      state = ActiveSupport::IsolatedExecutionState
+      state[:noiseless_runtime] = (state[:noiseless_runtime] || 0) + (duration * 1000)
     end
   end
 
@@ -159,7 +159,7 @@ module Noiseless
     private
 
     def noiseless_runtime
-      Thread.current[:noiseless_runtime] ||= 0
+      ActiveSupport::IsolatedExecutionState[:noiseless_runtime] ||= 0
     end
 
     module ClassMethods

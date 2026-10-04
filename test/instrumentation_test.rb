@@ -26,4 +26,15 @@ class InstrumentationTest < ActiveSupport::TestCase
   ensure
     ActiveSupport::Notifications.unsubscribe("noiseless.test")
   end
+
+  test "runtime recorded inside an Async task is visible to the caller" do
+    instance = Class.new { include Noiseless::Instrumentation }.new
+    ActiveSupport::IsolatedExecutionState[:noiseless_runtime] = 0
+
+    Sync { Async { instance.instrument(:test) { sleep 0.01 } }.wait }
+
+    assert_operator ActiveSupport::IsolatedExecutionState[:noiseless_runtime], :>, 0
+  ensure
+    ActiveSupport::IsolatedExecutionState[:noiseless_runtime] = nil
+  end
 end

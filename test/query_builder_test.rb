@@ -66,4 +66,10 @@ class QueryBuilderTest < ActiveSupport::TestCase
       builder.pinned_hits(["doc_1"])
     end
   end
+
+  test "Model#paginate keeps builder defaults for omitted arguments" do
+    node = @model.new.paginate(per_page: 5).to_ast.paginate
+
+    assert_equal [1, 5], [node.page, node.per_page]
+  end
 end

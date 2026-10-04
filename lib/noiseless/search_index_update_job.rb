@@ -31,12 +31,9 @@ module Noiseless
         raise ArgumentError, "Unknown operation: #{operation}"
       end
     rescue StandardError => e
-      if options[:raise_on_error]
-        raise e
-      elsif (logger = Rails.logger)
-        # Log error silently
-        logger.error "Noiseless: Background job failed for #{model_class_name}##{record_id}: #{e.message}"
-      end
+      raise if options[:raise_on_error]
+
+      Rails.logger&.error "Noiseless: Background job failed for #{model_class_name}##{record_id}: #{e.message}"
     end
 
     # Minimal object for deleted records
@@ -58,16 +55,21 @@ module Noiseless
         nil
       end
     end
+
+    # Queued runs raise so the job backend retries instead of recording success.
+    module Queued
+      def perform(model_class_name, record_id, operation, options = {})
+        SearchIndexUpdateJob.perform_now(model_class_name, record_id, operation, options.merge(raise_on_error: true))
+      end
+    end
   end
 
   # ActiveJob integration
   if defined?(ActiveJob::Base)
     class ActiveJobSearchIndexUpdateJob < ActiveJob::Base
-      queue_as :default
+      include SearchIndexUpdateJob::Queued
 
-      def perform(model_class_name, record_id, operation, options = {})
-        SearchIndexUpdateJob.perform_now(model_class_name, record_id, operation, options)
-      end
+      queue_as :default
     end
   end
 
@@ -75,10 +77,7 @@ module Noiseless
   if defined?(Sidekiq)
     class SidekiqSearchIndexUpdateJob
       include Sidekiq::Worker
-
-      def perform(model_class_name, record_id, operation, options = {})
-        SearchIndexUpdateJob.perform_now(model_class_name, record_id, operation, options)
-      end
+      include SearchIndexUpdateJob::Queued
     end
   end
 end

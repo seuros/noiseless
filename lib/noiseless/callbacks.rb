@@ -7,8 +7,6 @@ module Noiseless
     extend ActiveSupport::Concern
 
     included do
-      after_save :update_search_index_on_save
-      after_destroy :remove_from_search_index
       after_commit :update_search_index_on_commit, on: %i[create update]
       after_commit :remove_from_search_index_on_commit, on: :destroy
     end
@@ -51,28 +49,12 @@ module Noiseless
       end
     end
 
-    def update_search_index_on_save
-      return unless should_update_search_index?
-
-      update_search_index_async if noiseless_new_record? || (respond_to?(:changed?) && changed?)
-    rescue Noiseless::Error => e
-      handle_search_index_error(e, :update)
-    end
-
     def update_search_index_on_commit
       return unless should_update_search_index?
 
       update_search_index_async
     rescue Noiseless::Error => e
       handle_search_index_error(e, :update)
-    end
-
-    def remove_from_search_index
-      return unless should_update_search_index?
-
-      remove_from_search_index_async
-    rescue Noiseless::Error => e
-      handle_search_index_error(e, :delete)
     end
 
     def remove_from_search_index_on_commit
@@ -125,14 +107,6 @@ module Noiseless
       elsif (logger = Rails.logger)
         # Log the error or handle silently based on configuration
         logger.error "Noiseless: Failed to #{operation} search index for #{self.class.name}##{id}: #{error.message}"
-      end
-    end
-
-    def noiseless_new_record?
-      if respond_to?(:persisted?)
-        !persisted?
-      else
-        !id
       end
     end
   end

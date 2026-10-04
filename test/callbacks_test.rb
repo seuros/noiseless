@@ -160,4 +160,11 @@ class CallbacksTest < ActiveSupport::TestCase
   ensure
     original.nil? ? ENV.delete("NOISELESS_AUTO_INDEX") : ENV["NOISELESS_AUTO_INDEX"] = original
   end
+
+  test "search index callbacks run only after commit" do
+    filters = (LenientArticle._save_callbacks.to_a + LenientArticle._destroy_callbacks.to_a).map(&:filter)
+
+    assert_empty filters.grep(/search_index/)
+    assert_includes LenientArticle._commit_callbacks.map(&:filter), :update_search_index_on_commit
+  end
 end

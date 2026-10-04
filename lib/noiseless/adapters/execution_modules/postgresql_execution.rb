@@ -392,11 +392,8 @@ module Noiseless
           # Try cached model first (populated via register_model)
           return @model_class_cache[index_name] if @model_class_cache&.key?(index_name)
 
-          # Try to infer model from index name
-          model_name = index_name.to_s.classify
-          model_name.constantize
-        rescue NameError
-          nil
+          candidate = index_name.to_s.classify.safe_constantize
+          candidate if active_record_model?(candidate)
         end
 
         def active_record_model?(klass)

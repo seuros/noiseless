@@ -9,7 +9,9 @@ module Noiseless
       end
 
       def get(index:)
-        @adapter.execute_index_exists?(index) ? { index => {} } : raise("Index not found")
+        raise Noiseless::Error, "Index not found: #{index}" unless @adapter.index_exists?(index).wait
+
+        { index => {} }
       end
 
       def stats(index:)

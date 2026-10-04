@@ -139,6 +139,10 @@ class PostgresqlExecutionTest < ActiveSupport::TestCase
   test "register_model caches the model" do
     assert_equal MockModel, @adapter.model_class_cache["mock_models"]
   end
+
+  test "resolve_model ignores constants that are not ActiveRecord models" do
+    assert_nil @adapter.send(:resolve_model, ["string"])
+  end
 end
 
 class VectorAstNodeTest < ActiveSupport::TestCase

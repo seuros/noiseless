@@ -19,4 +19,11 @@ class AdaptersTest < ActiveSupport::TestCase
     end
     assert_match(/uninitialized constant.*UnknownAdapter/, error.message)
   end
+
+  test "IndicesAPI#get resolves the public index_exists? task" do
+    adapter = Struct.new(:exists) { def index_exists?(_index) = Async { exists } }
+
+    assert_equal({ "a" => {} }, Sync { Noiseless::Adapters::IndicesAPI.new(adapter.new(true)).get(index: "a") })
+    assert_raises(Noiseless::Error) { Sync { Noiseless::Adapters::IndicesAPI.new(adapter.new(false)).get(index: "a") } }
+  end
 end

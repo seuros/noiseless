@@ -59,8 +59,8 @@ module Noiseless
       self
     end
 
-    def paginate(page: nil, per_page: nil)
-      @builder.paginate(page: page, per_page: per_page)
+    def paginate(**)
+      @builder.paginate(**)
       self
     end
 
