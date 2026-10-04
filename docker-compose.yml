@@ -23,8 +23,9 @@ services:
       - search-network
 
   opensearch:
-    image: opensearchproject/opensearch:3
+    image: opensearchproject/opensearch:3.9.0
     container_name: opensearch
+    entrypoint: ["bash", "-c", "bin/opensearch-plugin list | grep -q workload-management || bin/opensearch-plugin install --batch workload-management; exec ./opensearch-docker-entrypoint.sh opensearch"]
     environment:
       - cluster.name=opensearch-cluster
       - node.name=opensearch
@@ -33,6 +34,7 @@ services:
       - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
       - "DISABLE_INSTALL_DEMO_CONFIG=true"
       - "DISABLE_SECURITY_PLUGIN=true"
+      - wlm.workload_group.mode=enabled
     ulimits:
       memlock:
         soft: -1

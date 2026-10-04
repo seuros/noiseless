@@ -11,20 +11,63 @@ module Noiseless
 
         private
 
-        def encode_vector(values) = values
+        def ast_to_hash(ast_node)
+          result = super
+
+          if (knn = result.delete(:knn))
+            must = result.dig(:query, :bool, :must)
+            result[:query] = must ? { bool: { must: [*must, knn], filter: result.dig(:query, :bool, :filter) }.compact } : knn
+            result[:_source] = { excludes: [ast_node.vector.field.to_s] }
+          end
+
+          if ast_node.hybrid_search?
+            hybrid = ast_node.hybrid
+            result[:query][:hybrid][:pagination_depth] = [result[:from].to_i + result[:size].to_i, hybrid.vector.k].max
+            result[:search_pipeline] ||= rrf_pipeline(hybrid)
+            result[:_source] = { excludes: [hybrid.vector.field.to_s] }
+          end
+
+          result
+        end
+
+        def build_knn_query(vector_node, filters: nil)
+          options = { vector: vector_node.embedding, k: vector_node.k }
+          options[:filter] = { bool: { filter: filters } } if filters.present?
+          { knn: { vector_node.field.to_s => options } }
+        end
+
+        def build_hybrid_query(hybrid_node, query)
+          raise ArgumentError, "OpenSearch hybrid search takes filters, not must clauses" if query&.dig(:bool, :must).present?
+
+          text = { multi_match: { query: hybrid_node.text_query, fields: hybrid_node.fields.presence }.compact }
+          hybrid = { queries: [text, build_knn_query(hybrid_node.vector)] }
+          filters = query&.dig(:bool, :filter)
+          hybrid[:filter] = { bool: { filter: filters } } if filters.present?
+          { hybrid: hybrid }
+        end
+
+        def rrf_pipeline(hybrid_node)
+          weights = [hybrid_node.text_weight, hybrid_node.vector_weight]
+          ranker = { combination: { technique: "rrf", rank_constant: 60, parameters: { weights: weights } } }
+          { phase_results_processors: [{ "score-ranker-processor": ranker }] }
+        end
+
+        def encode_vector(values) = [values.pack("e*")].pack("m0")
 
         def execute_search(query_hash, indexes: [], **_opts)
           index_path = indexes.any? ? indexes.join(",") : "_all"
-          path = "/#{index_path}/_search"
-          body = JSON.generate(query_hash)
+          pipeline = query_hash[:search_pipeline]
+          body = pipeline.is_a?(Hash) ? query_hash : query_hash.except(:search_pipeline)
+          path = "/#{index_path}/_search#{query_string(search_pipeline: (pipeline unless pipeline.is_a?(Hash)))}"
 
-          response = post_request(path, body)
+          response = post_request(path, JSON.generate(body))
           parse_json_response!(response, error_class: Noiseless::SearchError, context: "search #{index_path}")
         ensure
           response&.close
         end
 
         def execute_create_index(index_name, mappings: nil, settings: nil, **opts)
+          settings = (settings || {}).deep_merge(index: { knn: true }) if knn_mapping?(mappings)
           body = opts.dup
           body[:mappings] = mappings if mappings
           body[:settings] = settings if settings
@@ -35,11 +78,15 @@ module Noiseless
           response&.close
         end
 
+        def knn_mapping?(mappings)
+          properties = (mappings || {}).with_indifferent_access[:properties] || {}
+          properties.values.any? { it[:type].to_s == "knn_vector" }
+        end
+
         def execute_index_document(index, id, document, refresh: nil, **_opts)
           path = "/#{index}/_doc/#{id}#{query_string(refresh:)}"
-          body = JSON.generate(document)
 
-          response = put_request(path, body)
+          response = put_request(path, JSON.generate(encode_document(document)))
           parse_json_response!(response, context: "index document #{index}/#{id}")
         ensure
           response&.close
@@ -66,11 +113,8 @@ module Noiseless
           response&.close
         end
 
-        # OpenSearch-specific features
         def execute_point_in_time_search(query_hash, pit_id:, **_opts)
-          # Point-in-time search for consistent pagination
-          enhanced_query = query_hash.merge(pit: { id: pit_id })
-          body = JSON.generate(enhanced_query)
+          body = JSON.generate(query_hash.merge(pit: { id: pit_id }))
 
           response = post_request("/_search", body)
           parse_json_response!(response, error_class: Noiseless::SearchError, context: "point-in-time search")
@@ -79,12 +123,7 @@ module Noiseless
         end
 
         def execute_search_template(template_id:, params: {}, **_opts)
-          # OpenSearch search templates
-          template_query = {
-            id: template_id,
-            params: params
-          }
-          body = JSON.generate(template_query)
+          body = JSON.generate(id: template_id, params: params)
 
           response = post_request("/_search/template", body)
           parse_json_response!(response, error_class: Noiseless::SearchError, context: "search template #{template_id}")
@@ -92,118 +131,72 @@ module Noiseless
           response&.close
         end
 
-        # ============================================
-        # Search Pipeline API (OpenSearch 3.x)
-        # ============================================
-
-        def execute_create_pipeline(name, request_processors:, response_processors:, description: nil)
-          body = {
-            description: description,
-            request_processors: request_processors,
-            response_processors: response_processors
-          }.compact
-
-          response = put_request("/_search/pipeline/#{name}", JSON.generate(body))
-          JSON.parse(response.read)
-        rescue StandardError => e
-          { acknowledged: false, error: { type: e.class.name, reason: e.message } }
+        def execute_json(verb, path, body = nil, context:)
+          response = case verb
+                     when :get then get_request(path)
+                     when :delete then delete_request(path)
+                     else send(:"#{verb}_request", path, body && JSON.generate(body))
+                     end
+          parse_json_response!(response, context:)
         ensure
           response&.close
         end
 
-        def execute_get_pipeline(name)
-          response = get_request("/_search/pipeline/#{name}")
-          JSON.parse(response.read)
-        rescue StandardError => e
-          { error: { type: e.class.name, reason: e.message } }
+        def execute_exists?(path, context:)
+          response = get_request(path)
+          exists_response?(response, context:)
         ensure
           response&.close
         end
 
-        def execute_list_pipelines
-          response = get_request("/_search/pipeline")
-          JSON.parse(response.read)
-        rescue StandardError => e
-          { error: { type: e.class.name, reason: e.message } }
-        ensure
-          response&.close
+        def execute_create_pipeline(name, request_processors: nil, response_processors: nil, phase_results_processors: nil,
+                                    description: nil)
+          body = { description:, request_processors:, response_processors:, phase_results_processors: }.compact
+          execute_json(:put, "/_search/pipeline/#{name}", body, context: "create pipeline #{name}")
         end
 
-        def execute_delete_pipeline(name)
-          response = delete_request("/_search/pipeline/#{name}")
-          JSON.parse(response.read)
-        rescue StandardError => e
-          { acknowledged: false, error: { type: e.class.name, reason: e.message } }
-        ensure
-          response&.close
+        def execute_get_pipeline(name) = execute_json(:get, "/_search/pipeline/#{name}", context: "get pipeline #{name}")
+        def execute_list_pipelines = execute_json(:get, "/_search/pipeline", context: "list pipelines")
+        def execute_delete_pipeline(name) = execute_json(:delete, "/_search/pipeline/#{name}", context: "delete pipeline #{name}")
+        def execute_pipeline_exists?(name) = execute_exists?("/_search/pipeline/#{name}", context: "pipeline exists #{name}")
+
+        def execute_create_rule(feature_type, description:, value:, **attributes)
+          body = { description:, **attributes, feature_type => value }
+          execute_json(:put, "/_rules/#{feature_type}", body, context: "create #{feature_type} rule")
         end
 
-        def execute_pipeline_exists?(name)
-          response = head_request("/_search/pipeline/#{name}")
-          response.success?
-        rescue StandardError
-          false
-        ensure
-          response&.close
+        def execute_update_rule(feature_type, id, **changes)
+          execute_json(:put, "/_rules/#{feature_type}/#{id}", changes, context: "update #{feature_type} rule #{id}")
         end
 
-        # ============================================
-        # Query Rules API (OpenSearch 3.x)
-        # ============================================
-
-        def execute_create_rule(feature_type, rule_id, attributes:, feature_value:)
-          body = {
-            match_criteria: {
-              query: attributes
-            },
-            feature_value: feature_value
-          }
-
-          response = put_request("/_rules/#{feature_type}/#{rule_id}", JSON.generate(body))
-          JSON.parse(response.read)
-        rescue StandardError => e
-          { acknowledged: false, error: { type: e.class.name, reason: e.message } }
-        ensure
-          response&.close
-        end
-
-        def execute_get_rule(feature_type, rule_id)
-          response = get_request("/_rules/#{feature_type}/#{rule_id}")
-          JSON.parse(response.read)
-        rescue StandardError => e
-          { error: { type: e.class.name, reason: e.message } }
-        ensure
-          response&.close
+        def execute_get_rule(feature_type, id)
+          execute_json(:get, "/_rules/#{feature_type}/#{id}", context: "get #{feature_type} rule #{id}").fetch("rules").first
         end
 
         def execute_list_rules(feature_type, search_after: nil)
-          path = "/_rules/#{feature_type}"
-          path += "?search_after=#{search_after}" if search_after
-
-          response = get_request(path)
-          JSON.parse(response.read)
-        rescue StandardError => e
-          { rules: [], error: { type: e.class.name, reason: e.message } }
-        ensure
-          response&.close
+          path = "/_rules/#{feature_type}#{query_string(search_after:)}"
+          execute_json(:get, path, context: "list #{feature_type} rules").fetch("rules")
         end
 
-        def execute_delete_rule(feature_type, rule_id)
-          response = delete_request("/_rules/#{feature_type}/#{rule_id}")
-          JSON.parse(response.read)
-        rescue StandardError => e
-          { acknowledged: false, error: { type: e.class.name, reason: e.message } }
-        ensure
-          response&.close
+        def execute_delete_rule(feature_type, id)
+          execute_json(:delete, "/_rules/#{feature_type}/#{id}", context: "delete #{feature_type} rule #{id}")
         end
 
-        def execute_rule_exists?(feature_type, rule_id)
-          response = head_request("/_rules/#{feature_type}/#{rule_id}")
-          response.success?
-        rescue StandardError
-          false
-        ensure
-          response&.close
+        def execute_rule_exists?(feature_type, id)
+          execute_exists?("/_rules/#{feature_type}/#{id}", context: "#{feature_type} rule exists #{id}")
+        end
+
+        def execute_create_workload_group(name, resource_limits:, resiliency_mode: "soft")
+          body = { name:, resiliency_mode:, resource_limits: }
+          execute_json(:put, "/_wlm/workload_group", body, context: "create workload group #{name}")
+        end
+
+        def execute_get_workload_group(name)
+          execute_json(:get, "/_wlm/workload_group/#{name}", context: "get workload group #{name}").fetch("workload_groups").first
+        end
+
+        def execute_delete_workload_group(name)
+          execute_json(:delete, "/_wlm/workload_group/#{name}", context: "delete workload group #{name}")
         end
       end
     end

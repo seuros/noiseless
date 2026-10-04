@@ -115,6 +115,23 @@ class HybridSearchTest < ActiveSupport::TestCase
     assert_equal "my_reranking_pipeline", ast.pipeline
   end
 
+  def test_opensearch_hybrid_query_hash
+    adapter = Noiseless::Adapters::OpenSearch.new
+    builder = Noiseless::QueryBuilder.new(@model)
+    builder.hybrid("laptop", @test_embedding, field: :embedding, fields: [:title], text_weight: 0.7, vector_weight: 0.3, k: 25)
+           .filter(:category, "electronics").paginate(page: 2, per_page: 20)
+
+    query_hash = adapter.send(:ast_to_hash, builder.to_ast)
+    hybrid = query_hash.dig(:query, :hybrid)
+
+    assert_equal({ query: "laptop", fields: ["title"] }, hybrid[:queries].first[:multi_match])
+    assert_equal @test_embedding, hybrid[:queries].last.dig(:knn, "embedding", :vector)
+    assert_equal [{ term: { category: "electronics" } }], hybrid.dig(:filter, :bool, :filter)
+    assert_equal 40, hybrid[:pagination_depth]
+    ranker = query_hash.dig(:search_pipeline, :phase_results_processors, 0, :"score-ranker-processor")
+    assert_equal [0.7, 0.3], ranker.dig(:combination, :parameters, :weights)
+  end
+
   def test_opensearch_pipeline_in_query_hash
     adapter = Noiseless::Adapters::OpenSearch.new
     builder = Noiseless::QueryBuilder.new(@model)

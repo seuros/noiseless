@@ -79,9 +79,11 @@ class VectorSearchTest < ActiveSupport::TestCase
 
     query_hash = adapter.send(:ast_to_hash, builder.to_ast)
 
-    assert query_hash[:knn]
-    assert query_hash[:query][:bool][:filter]
-    assert_equal "published", query_hash[:query][:bool][:filter].first[:term][:status]
+    knn = query_hash.dig(:query, :knn, "embedding")
+    assert_equal @test_embedding, knn[:vector]
+    assert_equal 5, knn[:k]
+    assert_equal [{ term: { status: "published" } }], knn.dig(:filter, :bool, :filter)
+    assert_equal({ excludes: ["embedding"] }, query_hash[:_source])
   end
 
   # ============================================
@@ -140,10 +142,9 @@ class VectorSearchTest < ActiveSupport::TestCase
 
     query_hash = adapter.send(:ast_to_hash, builder.to_ast)
 
-    # Should have both kNN and text query
-    assert query_hash[:knn]
-    assert query_hash[:query][:bool][:must]
-    assert_equal "machine learning", query_hash[:query][:bool][:must].first[:match][:title]
+    must = query_hash.dig(:query, :bool, :must)
+    assert_equal "machine learning", must.first[:match][:title]
+    assert must.last.dig(:knn, "embedding")
   end
 
   def test_vector_with_pagination
@@ -154,7 +155,7 @@ class VectorSearchTest < ActiveSupport::TestCase
 
     query_hash = adapter.send(:ast_to_hash, builder.to_ast)
 
-    assert query_hash[:knn]
+    assert query_hash.dig(:query, :knn, "embedding")
     assert_equal 10, query_hash[:from]
     assert_equal 10, query_hash[:size]
   end
@@ -167,7 +168,7 @@ class VectorSearchTest < ActiveSupport::TestCase
 
     query_hash = adapter.send(:ast_to_hash, builder.to_ast)
 
-    assert query_hash[:knn]
+    assert query_hash.dig(:query, :knn, "embedding")
     assert_equal [{ _score: { order: :desc } }], query_hash[:sort]
   end
 end

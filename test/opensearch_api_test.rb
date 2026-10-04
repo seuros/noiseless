@@ -49,7 +49,7 @@ class OpenSearchAPITest < ActiveSupport::TestCase
 
   def test_rules_api_create_method
     assert_respond_to @adapter.rules, :create
-    assert_respond_to @adapter.rules, :put
+    assert_respond_to @adapter.rules, :update
   end
 
   def test_rules_api_get_method

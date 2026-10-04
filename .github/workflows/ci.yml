@@ -55,23 +55,21 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
-      opensearch:
-        image: opensearchproject/opensearch:3
-        ports:
-          - 9200/tcp
-        env:
-          discovery.type: single-node
-          OPENSEARCH_JAVA_OPTS: "-Xms256m -Xmx256m"
-          DISABLE_INSTALL_DEMO_CONFIG: "true"
-          DISABLE_SECURITY_PLUGIN: "true"
-        options: >-
-          --workdir /usr/share/opensearch
-          --health-cmd "curl -s http://localhost:9200/_cluster/health"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-
     steps:
+      - name: Start OpenSearch
+        run: |
+          docker run -d \
+            -p 9202:9200 \
+            --name opensearch \
+            -e discovery.type=single-node \
+            -e "OPENSEARCH_JAVA_OPTS=-Xms256m -Xmx256m" \
+            -e DISABLE_INSTALL_DEMO_CONFIG=true \
+            -e DISABLE_SECURITY_PLUGIN=true \
+            -e wlm.workload_group.mode=enabled \
+            --entrypoint bash \
+            opensearchproject/opensearch:3.9.0 \
+            -c "bin/opensearch-plugin install --batch workload-management && exec ./opensearch-docker-entrypoint.sh opensearch"
+
       - name: Start Typesense
         run: |
           docker run -d \
@@ -88,6 +86,9 @@ jobs:
           until curl -s http://localhost:8108/health | grep -q '"ok":true'; do
             sleep 1
           done
+
+      - name: Wait for OpenSearch
+        run: timeout 300 bash -c 'until curl -s http://localhost:9202/_cluster/health | grep -q status; do sleep 2; done'
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -117,7 +118,7 @@ jobs:
           ELASTICSEARCH_HOST: localhost
           ELASTICSEARCH_PORT: ${{ job.services.elasticsearch.ports[9200] }}
           OPENSEARCH_HOST: localhost
-          OPENSEARCH_PORT: ${{ job.services.opensearch.ports[9200] }}
+          OPENSEARCH_PORT: 9202
           TYPESENSE_HOST: localhost
           TYPESENSE_PORT: 8108
         run: bundle exec rake test

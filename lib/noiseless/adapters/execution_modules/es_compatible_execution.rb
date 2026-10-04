@@ -43,6 +43,7 @@ module Noiseless
         end
 
         def query_string(refresh: nil, **params)
+          params = params.compact
           params[:refresh] = refresh if refresh
           params.empty? ? "" : "?#{params.map { |key, value| "#{key}=#{value}" }.join('&')}"
         end

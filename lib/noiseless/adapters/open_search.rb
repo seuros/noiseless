@@ -10,7 +10,6 @@ module Noiseless
       ClusterAPI = Adapters::ClusterAPI
       IndicesAPI = Adapters::IndicesAPI
 
-      # OpenSearch-specific features
       def point_in_time_search(ast_node, pit_id:, **)
         query_hash = ast_to_hash(ast_node)
         Async do
@@ -24,138 +23,89 @@ module Noiseless
         end
       end
 
-      # Cluster health API - needed for Rails healthcheck
       def cluster
         @cluster ||= ClusterAPI.new(self)
       end
 
-      # Indices API - needed for index management operations
       def indices
         @indices ||= IndicesAPI.new(self)
       end
 
-      # Search Pipelines API - OpenSearch 3.x feature
       def pipelines
         @pipelines ||= PipelinesAPI.new(self)
       end
 
-      # Query Rules API - OpenSearch 3.x feature
       def rules
         @rules ||= RulesAPI.new(self)
       end
 
-      # Raw search for CommonShare compatibility
+      def workload_groups
+        @workload_groups ||= WorkloadGroupsAPI.new(self)
+      end
+
       def search_raw(query_body, indexes: [], **)
         Async do
           execute_search(query_body, indexes: indexes, **)
         end
       end
 
-      # Search Pipelines API for OpenSearch 3.x
-      # Pipelines can include request and response processors for neural search, reranking, etc.
       class PipelinesAPI
         def initialize(adapter)
           @adapter = adapter
         end
 
-        # Create or update a search pipeline
-        # @param name [String] Pipeline name
-        # @param request_processors [Array<Hash>] Request phase processors
-        # @param response_processors [Array<Hash>] Response phase processors
-        # @param description [String, nil] Optional description
-        def create(name, request_processors: [], response_processors: [], description: nil)
+        def create(name, request_processors: nil, response_processors: nil, phase_results_processors: nil, description: nil)
           Sync do
-            @adapter.send(:execute_create_pipeline, name,
-                          request_processors: request_processors,
-                          response_processors: response_processors,
-                          description: description)
+            @adapter.send(:execute_create_pipeline, name, request_processors:, response_processors:,
+                                                          phase_results_processors:, description:)
           end
         end
 
         alias put create
 
-        # Get a specific pipeline
-        def get(name)
-          Sync do
-            @adapter.send(:execute_get_pipeline, name)
-          end
-        end
-
-        # List all pipelines
-        def list
-          Sync do
-            @adapter.send(:execute_list_pipelines)
-          end
-        end
+        def get(name) = Sync { @adapter.send(:execute_get_pipeline, name) }
+        def list = Sync { @adapter.send(:execute_list_pipelines) }
+        def delete(name) = Sync { @adapter.send(:execute_delete_pipeline, name) }
+        def exists?(name) = Sync { @adapter.send(:execute_pipeline_exists?, name) }
 
         alias all list
-
-        # Delete a pipeline
-        def delete(name)
-          Sync do
-            @adapter.send(:execute_delete_pipeline, name)
-          end
-        end
-
-        # Check if a pipeline exists
-        def exists?(name)
-          Sync do
-            @adapter.send(:execute_pipeline_exists?, name)
-          end
-        end
       end
 
-      # Query Rules API for OpenSearch 3.x
-      # Rules allow pinning, boosting, or hiding specific results based on query patterns
+      # Rule-based auto-tagging; needs the workload-management plugin.
       class RulesAPI
         def initialize(adapter)
           @adapter = adapter
         end
 
-        # Create or update a rule
-        # @param feature_type [String] Feature type (e.g., 'pinned_queries')
-        # @param rule_id [String] Unique rule identifier
-        # @param attributes [Hash] Rule matching attributes
-        # @param feature_value [Hash] The feature value to apply
-        def create(feature_type, rule_id, attributes:, feature_value:)
-          Sync do
-            @adapter.send(:execute_create_rule, feature_type, rule_id,
-                          attributes: attributes,
-                          feature_value: feature_value)
-          end
+        def create(feature_type, description:, value:, **attributes)
+          Sync { @adapter.send(:execute_create_rule, feature_type, description:, value:, **attributes) }
         end
 
-        alias put create
+        def update(feature_type, id, **changes) = Sync { @adapter.send(:execute_update_rule, feature_type, id, **changes) }
+        def get(feature_type, id) = Sync { @adapter.send(:execute_get_rule, feature_type, id) }
 
-        # Get a specific rule
-        def get(feature_type, rule_id)
-          Sync do
-            @adapter.send(:execute_get_rule, feature_type, rule_id)
-          end
-        end
-
-        # List rules for a feature type
         def list(feature_type, search_after: nil)
-          Sync do
-            @adapter.send(:execute_list_rules, feature_type, search_after: search_after)
-          end
+          Sync { @adapter.send(:execute_list_rules, feature_type, search_after:) }
         end
+
+        def delete(feature_type, id) = Sync { @adapter.send(:execute_delete_rule, feature_type, id) }
+        def exists?(feature_type, id) = Sync { @adapter.send(:execute_rule_exists?, feature_type, id) }
 
         alias all list
+      end
 
-        # Delete a rule
-        def delete(feature_type, rule_id)
-          Sync do
-            @adapter.send(:execute_delete_rule, feature_type, rule_id)
-          end
+      # Workload groups that workload_group rules point at; needs the workload-management plugin.
+      class WorkloadGroupsAPI
+        def initialize(adapter)
+          @adapter = adapter
         end
 
-        # Check if a rule exists
-        def exists?(feature_type, rule_id)
-          Sync do
-            @adapter.send(:execute_rule_exists?, feature_type, rule_id)
-          end
+        def create(name, resource_limits:, resiliency_mode: "soft")
+          Sync { @adapter.send(:execute_create_workload_group, name, resource_limits:, resiliency_mode:) }
         end
+
+        def get(name) = Sync { @adapter.send(:execute_get_workload_group, name) }
+        def delete(name) = Sync { @adapter.send(:execute_delete_workload_group, name) }
       end
 
       private
