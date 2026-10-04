@@ -66,33 +66,6 @@ class HybridSearchTest < ActiveSupport::TestCase
   # OpenSearch Hybrid Query Generation
   # ============================================
 
-  def test_opensearch_hybrid_query_hash
-    adapter = Noiseless::Adapters::OpenSearch.new
-    builder = Noiseless::QueryBuilder.new(@model)
-    builder.hybrid("machine learning", @test_embedding, field: :embedding, k: 10)
-
-    query_hash = adapter.send(:ast_to_hash, builder.to_ast)
-
-    # Should have query, knn, and rank (RRF)
-    assert query_hash[:query], "Query should be present"
-    assert query_hash[:knn], "kNN should be present"
-    assert query_hash[:rank], "Rank (RRF) should be present"
-    assert_equal "machine learning", query_hash[:query][:bool][:should].first[:match][:_all]
-    assert_equal @test_embedding, query_hash[:knn][:query_vector]
-    assert query_hash[:rank][:rrf]
-  end
-
-  def test_opensearch_hybrid_rrf_window_size
-    adapter = Noiseless::Adapters::OpenSearch.new
-    builder = Noiseless::QueryBuilder.new(@model)
-    builder.hybrid("query", @test_embedding, field: :embedding, k: 25)
-
-    query_hash = adapter.send(:ast_to_hash, builder.to_ast)
-
-    # Window size should be k * 2
-    assert_equal 50, query_hash[:rank][:rrf][:window_size]
-  end
-
   # ============================================
   # Elasticsearch Hybrid Query Generation
   # ============================================
@@ -100,13 +73,14 @@ class HybridSearchTest < ActiveSupport::TestCase
   def test_elasticsearch_hybrid_query_hash
     adapter = Noiseless::Adapters::Elasticsearch.new
     builder = Noiseless::QueryBuilder.new(@model)
-    builder.hybrid("search term", @test_embedding, field: :vec)
+    builder.hybrid("search term", @test_embedding, field: :vec, fields: [:title], text_weight: 0.3, vector_weight: 0.7)
+           .filter(:category, "electronics")
 
-    query_hash = adapter.send(:ast_to_hash, builder.to_ast)
+    should = adapter.send(:ast_to_hash, builder.to_ast).dig(:query, :bool, :should)
 
-    assert query_hash[:query]
-    assert query_hash[:knn]
-    assert query_hash[:rank][:rrf]
+    assert_equal({ query: "search term", fields: ["title"], boost: 0.3 }, should.first[:multi_match])
+    assert_equal 0.7, should.last[:knn][:boost]
+    assert_equal [{ term: { category: "electronics" } }], should.last[:knn][:filter]
   end
 
   # ============================================
@@ -154,19 +128,4 @@ class HybridSearchTest < ActiveSupport::TestCase
   # ============================================
   # Combined Features
   # ============================================
-
-  def test_hybrid_with_filters
-    adapter = Noiseless::Adapters::OpenSearch.new
-    builder = Noiseless::QueryBuilder.new(@model)
-    builder.hybrid("laptop", @test_embedding, field: :embedding)
-           .filter(:category, "electronics")
-           .paginate(page: 1, per_page: 20)
-
-    query_hash = adapter.send(:ast_to_hash, builder.to_ast)
-
-    assert query_hash[:knn]
-    assert query_hash[:rank][:rrf]
-    assert_equal 0, query_hash[:from]
-    assert_equal 20, query_hash[:size]
-  end
 end

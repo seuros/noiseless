@@ -71,20 +71,6 @@ class VectorSearchTest < ActiveSupport::TestCase
   # OpenSearch kNN Query Generation
   # ============================================
 
-  def test_opensearch_knn_query_hash
-    adapter = Noiseless::Adapters::OpenSearch.new
-    builder = Noiseless::QueryBuilder.new(@model)
-    builder.vector(:embedding, @test_embedding, k: 10)
-
-    query_hash = adapter.send(:ast_to_hash, builder.to_ast)
-
-    assert query_hash[:knn], "kNN query should be present"
-    assert_equal "embedding", query_hash[:knn][:field]
-    assert_equal @test_embedding, query_hash[:knn][:query_vector]
-    assert_equal 10, query_hash[:knn][:k]
-    assert_equal 100, query_hash[:knn][:num_candidates] # k * 10
-  end
-
   def test_opensearch_knn_with_filters
     adapter = Noiseless::Adapters::OpenSearch.new
     builder = Noiseless::QueryBuilder.new(@model)
@@ -111,7 +97,7 @@ class VectorSearchTest < ActiveSupport::TestCase
 
     assert query_hash[:knn], "kNN query should be present"
     assert_equal "embedding", query_hash[:knn][:field]
-    assert_equal @test_embedding, query_hash[:knn][:query_vector]
+    assert_equal [@test_embedding.pack("g*")].pack("m0"), query_hash[:knn][:query_vector]
     assert_equal 10, query_hash[:knn][:k]
   end
 

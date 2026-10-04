@@ -91,6 +91,8 @@ module Noiseless
         document = transform ? transform.call(record) : default_transform(record)
         next unless document
 
+        document = wrap_embeddings(document)
+
         {
           index: {
             _index: index_name,
@@ -137,7 +139,7 @@ module Noiseless
     end
 
     def collect_errors(response, batch)
-      return unless response.is_a?(Hash) && response["items"]
+      return unless response.is_a?(Hash) && response["errors"] && response["items"]
 
       response["items"].each_with_index do |item, index|
         action = item.keys.first
@@ -173,6 +175,20 @@ module Noiseless
 
     def index_config
       model_class.respond_to?(:mapping) ? MappingDefinitionProcessor.process(model_class.mapping) : {}
+    end
+
+    def wrap_embeddings(document)
+      return document if vector_fields.empty?
+
+      document.to_h.to_h do |key, value|
+        [key, vector_fields.include?(key.to_s) && value.is_a?(Array) ? Embedding.new(values: value) : value]
+      end
+    end
+
+    def vector_fields
+      @vector_fields ||= index_config.dig(:mappings, :properties).to_h.filter_map do |name, config|
+        name.to_s if %w[dense_vector knn_vector].include?(config[:type].to_s)
+      end
     end
   end
 end

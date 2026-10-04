@@ -33,8 +33,8 @@ module Noiseless
         end
 
         def execute_index_document(index, id, document, refresh: nil, **_opts)
-          path = (id ? "/#{index}/_doc/#{id}" : "/#{index}/_doc") + refresh_query(refresh)
-          body = JSON.generate(document)
+          path = (id ? "/#{index}/_doc/#{id}" : "/#{index}/_doc") + query_string(refresh:)
+          body = JSON.generate(encode_document(document))
 
           response = id ? put_request(path, body) : post_request(path, body)
           parse_json_response!(response, context: "index document #{index}/#{id}")

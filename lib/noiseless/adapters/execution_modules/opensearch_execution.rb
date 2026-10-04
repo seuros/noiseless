@@ -11,6 +11,8 @@ module Noiseless
 
         private
 
+        def encode_vector(values) = values
+
         def execute_search(query_hash, indexes: [], **_opts)
           index_path = indexes.any? ? indexes.join(",") : "_all"
           path = "/#{index_path}/_search"
@@ -34,7 +36,7 @@ module Noiseless
         end
 
         def execute_index_document(index, id, document, refresh: nil, **_opts)
-          path = "/#{index}/_doc/#{id}#{refresh_query(refresh)}"
+          path = "/#{index}/_doc/#{id}#{query_string(refresh:)}"
           body = JSON.generate(document)
 
           response = put_request(path, body)

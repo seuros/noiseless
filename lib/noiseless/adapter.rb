@@ -155,14 +155,8 @@ module Noiseless
       # Aggregations
       result[:aggs] = build_aggregations_hash(ast_node.aggregations) if ast_node.aggregations.any?
 
-      # Vector/kNN search (OpenSearch/Elasticsearch compatible)
-      result[:knn] = build_knn_query(ast_node.vector) if ast_node.vector_search?
-
-      # Hybrid search (combines text + vector with RRF or weighted scoring)
-      if ast_node.hybrid_search?
-        hybrid_config = build_hybrid_query(ast_node.hybrid)
-        result.merge!(hybrid_config)
-      end
+      result[:knn] = build_knn_query(ast_node.vector, filters: result.dig(:query, :bool, :filter)) if ast_node.vector_search?
+      result[:query] = build_hybrid_query(ast_node.hybrid, result[:query]) if ast_node.hybrid_search?
 
       # Search pipeline (OpenSearch only)
       result[:search_pipeline] = ast_node.pipeline if ast_node.has_pipeline?
@@ -170,36 +164,27 @@ module Noiseless
       result
     end
 
-    def build_knn_query(vector_node)
+    def build_knn_query(vector_node, filters: nil)
       {
         field: vector_node.field.to_s,
-        query_vector: vector_node.embedding,
+        query_vector: encode_vector(vector_node.embedding),
         k: vector_node.k,
-        num_candidates: vector_node.k * 10
-      }
+        filter: filters.presence
+      }.compact
     end
 
-    # Build hybrid query using RRF (Reciprocal Rank Fusion) for OpenSearch/Elasticsearch
-    def build_hybrid_query(hybrid_node)
-      {
-        query: {
-          bool: {
-            should: [
-              {
-                match: {
-                  _all: hybrid_node.text_query
-                }
-              }
-            ]
-          }
-        },
-        knn: build_knn_query(hybrid_node.vector),
-        rank: {
-          rrf: {
-            window_size: hybrid_node.vector.k * 2
-          }
-        }
-      }
+    def build_hybrid_query(hybrid_node, query)
+      bool = query&.fetch(:bool, nil)&.dup || {}
+      text = { multi_match: { query: hybrid_node.text_query, fields: hybrid_node.fields.presence, boost: hybrid_node.text_weight }.compact }
+      vector = { knn: build_knn_query(hybrid_node.vector, filters: bool[:filter]).merge(boost: hybrid_node.vector_weight) }
+
+      { bool: bool.merge(should: [text, vector], minimum_should_match: 1) }
+    end
+
+    def encode_vector(values) = [values.pack("g*")].pack("m0")
+
+    def encode_document(document)
+      document.to_h.transform_values { it.is_a?(Noiseless::Embedding) ? encode_vector(it.values) : it }
     end
 
     def build_query_hash(bool_node)
