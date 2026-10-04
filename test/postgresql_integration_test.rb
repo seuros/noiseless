@@ -327,6 +327,15 @@ class PostgresqlIntegrationTest < ActiveSupport::TestCase
     model&.remove_connection
   end
 
+  test "a failing search raises instead of reading as zero hits" do
+    builder = Noiseless::QueryBuilder.new(@search_model)
+    builder.where(:status, { unsupported: 1 })
+
+    assert_raises(Noiseless::SearchError) do
+      Sync { @adapter.search(builder.to_ast, model_class: Article, response_type: :results).wait }
+    end
+  end
+
   test "geo filter quotes the column and accepts symbol or string keyed points" do
     [
       { geo_distance: { distance: "10km", title: { lat: 48.85, lon: 2.35 } } },

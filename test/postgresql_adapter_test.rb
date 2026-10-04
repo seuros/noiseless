@@ -139,23 +139,6 @@ class PostgresqlExecutionTest < ActiveSupport::TestCase
   test "register_model caches the model" do
     assert_equal MockModel, @adapter.model_class_cache["mock_models"]
   end
-
-  test "empty response has correct structure" do
-    response = @adapter.send(:empty_response)
-
-    assert_equal 0, response.dig("hits", "total", "value")
-    assert_empty response.dig("hits", "hits")
-    assert_equal "eq", response.dig("hits", "total", "relation")
-  end
-
-  test "error response includes error details" do
-    error = StandardError.new("Test error")
-    response = @adapter.send(:error_response, error)
-
-    assert_equal "StandardError", response.dig("error", "type")
-    assert_equal "Test error", response.dig("error", "reason")
-    assert_equal 0, response.dig("hits", "total", "value")
-  end
 end
 
 class VectorAstNodeTest < ActiveSupport::TestCase

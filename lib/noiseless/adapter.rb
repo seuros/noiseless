@@ -262,7 +262,7 @@ module Noiseless
       rescue JSON::ParserError, TypeError
         nil
       end
-      error = payload.is_a?(Hash) ? payload["error"] : nil
+      error = payload.is_a?(Hash) ? payload["error"] || payload["message"] : nil
       reason = if error.is_a?(Hash)
                  [error["type"], error["reason"]].compact.join(": ")
                elsif error
@@ -272,6 +272,13 @@ module Noiseless
                end
       message = context ? "#{context}: #{reason}" : reason
       raise error_class.new(message, status: response.status, error_type: error.is_a?(Hash) ? error["type"] : nil)
+    end
+
+    def head_exists?(response, context:)
+      return true if response.success?
+      return false if response.status == 404
+
+      raise Noiseless::RequestError.new("#{context}: HTTP #{response.status}", status: response.status)
     end
 
     # Override in subclasses

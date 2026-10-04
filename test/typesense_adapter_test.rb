@@ -118,26 +118,21 @@ class TypesenseAdapterTest < ActiveSupport::TestCase
     assert_equal expected, query_hash
   end
 
-  test "executes search and returns Typesense-style response" do
+  test "searching a missing collection raises instead of reading as zero hits" do
     bool_node = Noiseless::AST::Bool.new(
       must: [Noiseless::AST::Match.new("title", "Ruby")],
       filter: []
     )
     root_node = Noiseless::AST::Root.new(
-      indexes: ["posts"],
+      indexes: ["noiseless_missing_collection"],
       bool: bool_node,
       sort: [],
       paginate: nil
     )
 
-    task = @adapter.search(root_node)
-    response = Sync { task.wait }
-
-    # Verify response is a proper Response object and is empty (no data in test index)
-    assert_instance_of Noiseless::Response::Results, response
-    assert_respond_to response, :total
-    assert_equal 0, response.total
-    assert_empty response
+    error = assert_raises(Noiseless::SearchError) { Sync { @adapter.search(root_node).wait } }
+    assert_equal 404, error.status
+    assert_not(Sync { @adapter.index_exists?("noiseless_missing_collection").wait })
   end
 
   test "executes bulk operations" do

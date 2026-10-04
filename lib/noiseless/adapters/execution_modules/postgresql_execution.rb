@@ -18,23 +18,32 @@ module Noiseless
 
         def execute_search(query_hash, model_class: nil, **)
           model = resolve_model(query_hash[:indexes], model_class)
-          return empty_response unless model
+          raise Noiseless::SearchError, "no ActiveRecord model for index #{query_hash[:indexes]&.first.inspect}" unless model
 
-          # Check if this is a vector search
-          return execute_vector_search(model, query_hash) if query_hash[:vector]
+          with_search_errors do
+            next execute_vector_search(model, query_hash) if query_hash[:vector]
 
-          scope = build_search_scope(model, query_hash)
-          total = scope.except(:order, :limit, :offset).count
-          records = apply_pagination(scope, query_hash[:paginate]).to_a
+            scope = build_search_scope(model, query_hash)
+            total = scope.except(:order, :limit, :offset).count
+            records = apply_pagination(scope, query_hash[:paginate]).to_a
 
-          format_as_search_response(records, model, total: total)
+            format_as_search_response(records, model, total: total)
+          end
+        end
+
+        def with_search_errors
+          yield
+        rescue ActiveRecord::ConnectionNotEstablished => e
+          raise Noiseless::ConnectionError, "postgresql unreachable: #{e.message}"
+        rescue Noiseless::Error
+          raise
         rescue StandardError => e
-          error_response(e)
+          raise Noiseless::SearchError, "postgresql search failed: #{e.message}"
         end
 
         def execute_vector_search(model, query_hash)
           vector_node = query_hash[:vector]
-          return empty_response unless vector_node && pgvector_available?
+          raise Noiseless::SearchError, "vector search requires the pgvector extension" unless pgvector_available?
 
           scope = apply_filter_clauses(model.all, query_hash[:bool]&.filter || [], model)
           neighbors = vector_search(
@@ -50,8 +59,6 @@ module Noiseless
 
           records = paginate_neighbors(neighbors, paginate_node, vector_node.k).to_a
           format_vector_response(records, model, total: [scope.count, vector_node.k].min)
-        rescue StandardError => e
-          error_response(e)
         end
 
         def paginate_neighbors(scope, paginate_node, k)
@@ -108,8 +115,6 @@ module Noiseless
         def execute_index_exists?(index_name)
           model = resolve_model([index_name])
           model.present? && model.table_exists?
-        rescue StandardError
-          false
         end
 
         # Document writes are no-ops: the table IS the index, so queries always
@@ -131,8 +136,6 @@ module Noiseless
         def execute_document_exists?(index, id)
           model = resolve_model([index])
           model&.exists?(id: id) || false
-        rescue StandardError
-          false
         end
 
         def execute_cluster_health(**)
@@ -372,33 +375,6 @@ module Noiseless
               "max_score" => hits.any? ? 1.0 : nil,
               "hits" => hits
             }
-          }
-        end
-
-        def empty_response
-          {
-            "took" => 0,
-            "timed_out" => false,
-            "_shards" => { "total" => 1, "successful" => 1, "skipped" => 0, "failed" => 0 },
-            "hits" => {
-              "total" => { "value" => 0, "relation" => "eq" },
-              "max_score" => nil,
-              "hits" => []
-            }
-          }
-        end
-
-        def error_response(error)
-          {
-            "took" => 0,
-            "timed_out" => false,
-            "_shards" => { "total" => 1, "successful" => 0, "skipped" => 0, "failed" => 1 },
-            "hits" => {
-              "total" => { "value" => 0, "relation" => "eq" },
-              "max_score" => nil,
-              "hits" => []
-            },
-            "error" => { "type" => error.class.name, "reason" => error.message }
           }
         end
 

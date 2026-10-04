@@ -167,7 +167,7 @@ module Noiseless
           # Convert query_hash to URL params for Typesense
           params = query_hash.map { |k, v| "#{k}=#{CGI.escape(v.to_s)}" }.join("&")
           response = get_request("/collections/#{collection}/documents/search?#{params}")
-          result = JSON.parse(response.read)
+          result = parse_json_response!(response, error_class: Noiseless::SearchError, context: "search #{collection}")
 
           # Convert Typesense format to Elasticsearch-like format
           {
@@ -186,22 +186,6 @@ module Noiseless
                   _source: hit["document"]
                 }
               end
-            }
-          }
-        rescue StandardError => e
-          # Return empty response on error to maintain compatibility
-          {
-            took: 0,
-            timed_out: false,
-            _shards: { total: 0, successful: 0, skipped: 0, failed: 0 },
-            hits: {
-              total: { value: 0, relation: "eq" },
-              max_score: nil,
-              hits: []
-            },
-            error: {
-              type: e.class.name,
-              reason: e.message
             }
           }
         ensure
@@ -286,9 +270,7 @@ module Noiseless
 
         def execute_index_exists?(collection_name)
           response = head_request("/collections/#{collection_name}")
-          response.success?
-        rescue StandardError
-          false
+          head_exists?(response, context: "collection exists #{collection_name}")
         ensure
           response&.close
         end
@@ -338,9 +320,7 @@ module Noiseless
 
         def execute_document_exists?(collection, id)
           response = head_request("/collections/#{collection}/documents/#{id}")
-          response.success?
-        rescue StandardError
-          false
+          head_exists?(response, context: "document exists #{collection}/#{id}")
         ensure
           response&.close
         end

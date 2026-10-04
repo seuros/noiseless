@@ -50,9 +50,7 @@ module Noiseless
 
         def execute_index_exists?(index_name)
           response = head_request("/#{index_name}")
-          response.success?
-        rescue StandardError
-          false
+          head_exists?(response, context: "index exists #{index_name}")
         ensure
           response&.close
         end
@@ -79,9 +77,7 @@ module Noiseless
 
         def execute_document_exists?(index, id)
           response = head_request("/#{index}/_doc/#{id}")
-          response.success?
-        rescue StandardError
-          false
+          head_exists?(response, context: "document exists #{index}/#{id}")
         ensure
           response&.close
         end
