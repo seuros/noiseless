@@ -70,12 +70,11 @@ class IdempotentDeleteTest < ActiveSupport::TestCase
   end
 
   def test_refresh_index_works_without_surrounding_reactor
-    # Calling outside a reactor must not raise "No async task available!"
-    error = assert_raises(Noiseless::RequestError) do
-      os_adapter.refresh_index("noiseless_refresh_no_reactor").wait
-    end
+    Sync { os_adapter.create_index("noiseless_refresh_no_reactor").wait }
 
-    assert_match(/index_not_found/, error.message)
+    assert os_adapter.refresh_index("noiseless_refresh_no_reactor").wait["_shards"]
+  ensure
+    Sync { os_adapter.delete_index("noiseless_refresh_no_reactor").wait }
   end
 
   private

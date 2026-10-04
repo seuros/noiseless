@@ -123,6 +123,8 @@ class PgvectorSupportTest < ActiveSupport::TestCase
     skip "pgvector not installable" unless connection.select_value("SELECT 1 FROM pg_available_extensions WHERE name = 'vector'")
 
     connection.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    vector_oid = connection.select_value("SELECT oid FROM pg_type WHERE typname = 'vector'").to_i
+    connection.send(:type_map).register_type(vector_oid, ActiveRecord::Type::String.new)
     connection.execute(%(CREATE TABLE vector_docs (id bigserial PRIMARY KEY, label text, "Embedding" vector(3))))
     model = Class.new(ActiveRecord::Base) do
       self.table_name = "vector_docs"

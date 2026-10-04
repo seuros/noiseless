@@ -93,11 +93,11 @@ class IntegrationTest < ActiveSupport::TestCase
   end
 
   def assert_async_opensearch_features(adapter)
-    # The template id is bogus, so the backend rejects it; the failure must
-    # surface as a SearchError when awaited.
-    template_task = adapter.search_template(template_id: "test_template", params: { query: "test" })
-    assert_kind_of Async::Task, template_task
-    assert_raises(Noiseless::SearchError) { Sync { template_task.wait } }
+    Sync do
+      template_task = adapter.search_template(template_id: "test_template", params: { query: "test" })
+      assert_kind_of Async::Task, template_task
+      assert_raises(Noiseless::SearchError) { template_task.wait }
+    end
   end
 
   # Helper methods to build AST nodes
