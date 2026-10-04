@@ -34,6 +34,21 @@ class ElasticsearchVectorTest < ActiveSupport::TestCase
     assert_equal %w[1 2], search_ids(hybrid)
   end
 
+  test "single-document writes wrap mapped vector fields" do
+    record_class = Class.new(Struct.new(:id, :title, :embedding)) do
+      extend Noiseless::DSL::ClassMethods
+
+      mapping { properties { embedding :dense_vector, dims: 3 } }
+
+      def to_search_document = to_h
+    end
+
+    document = Noiseless::DocumentManager.new(record_class.new(1, "ruby", [1, 0, 0]), connection: :primary).send(:build_document)
+
+    assert_equal Noiseless::Embedding.new(values: [1, 0, 0]), document[:embedding]
+    assert_equal "ruby", document[:title]
+  end
+
   private
 
   def client = Noiseless.connections.client(:primary)

@@ -65,13 +65,18 @@ module Noiseless
     attr_reader :model_instance
 
     def build_document
-      if model_instance.respond_to?(:to_search_document)
-        model_instance.to_search_document
-      elsif model_instance.respond_to?(:to_h)
-        model_instance.to_h
-      elsif model_instance.respond_to?(:attributes)
-        model_instance.attributes
-      end
+      document = if model_instance.respond_to?(:to_search_document)
+                   model_instance.to_search_document
+                 elsif model_instance.respond_to?(:to_h)
+                   model_instance.to_h
+                 elsif model_instance.respond_to?(:attributes)
+                   model_instance.attributes
+                 end
+      document && Embedding.wrap(document, vector_fields)
+    end
+
+    def vector_fields
+      @vector_fields ||= Embedding.vector_fields(model_instance.class)
     end
 
     def document_id
@@ -131,7 +136,7 @@ module Noiseless
         end
       end
 
-      changes
+      Embedding.wrap(changes, vector_fields)
     end
   end
 end

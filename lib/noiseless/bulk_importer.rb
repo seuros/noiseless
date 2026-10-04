@@ -91,7 +91,7 @@ module Noiseless
         document = transform ? transform.call(record) : default_transform(record)
         next unless document
 
-        document = wrap_embeddings(document)
+        document = Embedding.wrap(document, vector_fields)
 
         {
           index: {
@@ -177,18 +177,8 @@ module Noiseless
       model_class.respond_to?(:mapping) ? MappingDefinitionProcessor.process(model_class.mapping) : {}
     end
 
-    def wrap_embeddings(document)
-      return document if vector_fields.empty?
-
-      document.to_h.to_h do |key, value|
-        [key, vector_fields.include?(key.to_s) && value.is_a?(Array) ? Embedding.new(values: value) : value]
-      end
-    end
-
     def vector_fields
-      @vector_fields ||= index_config.dig(:mappings, :properties).to_h.filter_map do |name, config|
-        name.to_s if %w[dense_vector knn_vector].include?(config[:type].to_s)
-      end
+      @vector_fields ||= Embedding.vector_fields(model_class)
     end
   end
 end
