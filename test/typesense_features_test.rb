@@ -182,19 +182,6 @@ class TypesenseFeaturesTest < ActiveSupport::TestCase
     assert_includes query_hash[:include_fields], "$categories(title)"
   end
 
-  def test_typesense_collapse_maps_group_max_candidates
-    adapter = Noiseless::Adapters::Typesense.new
-    builder = Noiseless::QueryBuilder.new(@model)
-    builder.match(:title, "test")
-           .collapse(:company_id, max_concurrent_group_searches: 250)
-
-    query_hash = adapter.send(:ast_to_hash, builder.to_ast)
-
-    assert_equal "company_id", query_hash[:group_by]
-    assert_equal 1, query_hash[:group_limit]
-    assert_equal 250, query_hash[:group_max_candidates]
-  end
-
   def test_typesense_collapse_without_group_max_candidates
     adapter = Noiseless::Adapters::Typesense.new
     builder = Noiseless::QueryBuilder.new(@model)
@@ -242,7 +229,7 @@ class TypesenseFeaturesTest < ActiveSupport::TestCase
   def test_hybrid_search_with_conversational
     adapter = Noiseless::Adapters::Typesense.new
     builder = Noiseless::QueryBuilder.new(@model)
-    builder.hybrid("machine learning", @test_embedding, field: :embedding)
+    builder.hybrid("machine learning", @test_embedding, field: :embedding, fields: [:title])
            .conversational(model_id: "gpt-4")
 
     query_hash = adapter.send(:ast_to_hash, builder.to_ast)

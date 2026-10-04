@@ -116,12 +116,13 @@ class HybridSearchTest < ActiveSupport::TestCase
   def test_typesense_hybrid_query_hash
     adapter = Noiseless::Adapters::Typesense.new
     builder = Noiseless::QueryBuilder.new(@model)
-    builder.hybrid("search query", @test_embedding, field: :embedding, k: 10, vector_weight: 0.6)
+    builder.hybrid("search query", @test_embedding, field: :embedding, fields: [:title], k: 10, vector_weight: 0.6)
 
     query_hash = adapter.send(:ast_to_hash, builder.to_ast)
 
     # Typesense uses q + vector_query with alpha parameter
     assert_equal "search query", query_hash[:q]
+    assert_equal "title", query_hash[:query_by]
     assert_includes query_hash[:vector_query], "embedding"
     assert_includes query_hash[:vector_query], "alpha:0.6"
     assert_includes query_hash[:vector_query], "k:10"

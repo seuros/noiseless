@@ -30,7 +30,8 @@ class TypesenseAdapterTest < ActiveSupport::TestCase
       q: "Ruby",
       query_by: "title",
       page: 1,
-      per_page: 20
+      per_page: 20,
+      enable_highlight_v1: false
     }
 
     assert_equal expected, query_hash
@@ -65,10 +66,11 @@ class TypesenseAdapterTest < ActiveSupport::TestCase
     expected = {
       q: "Ruby programming",
       query_by: "title,content",
-      filter_by: "status:=published && category:=tech",
+      filter_by: "status:=`published` && category:=`tech`",
       sort_by: "created_at:desc,title:asc",
       page: 2,
-      per_page: 25
+      per_page: 25,
+      enable_highlight_v1: false
     }
 
     assert_equal expected, query_hash
@@ -88,7 +90,8 @@ class TypesenseAdapterTest < ActiveSupport::TestCase
     expected = {
       q: "*",
       page: 1,
-      per_page: 20
+      per_page: 20,
+      enable_highlight_v1: false
     }
 
     assert_equal expected, query_hash
@@ -110,9 +113,10 @@ class TypesenseAdapterTest < ActiveSupport::TestCase
 
     expected = {
       q: "*",
-      filter_by: "status:=published",
+      filter_by: "status:=`published`",
       page: 1,
-      per_page: 20
+      per_page: 20,
+      enable_highlight_v1: false
     }
 
     assert_equal expected, query_hash
@@ -135,25 +139,41 @@ class TypesenseAdapterTest < ActiveSupport::TestCase
     assert_not(Sync { @adapter.index_exists?("noiseless_missing_collection").wait })
   end
 
-  test "executes bulk operations" do
-    actions = [
-      { index: { _index: "posts", _id: 1, data: { title: "Test" } } },
-      { index: { _index: "posts", _id: 2, data: { title: "Another" } } }
-    ]
-
-    task = @adapter.bulk(actions)
-    response = Sync { task.wait }
-
-    # Verify bulk response format
-    assert_includes response.keys, :items
-    # The response might have errors, so check if items exists
-    if response[:items].present?
-      assert_equal 2, response[:items].size
-      # Check that all items have index operations with created result
-      assert(response[:items].all? { |item| item[:index] && item[:index][:result] == "created" })
-    else
-      # If no items due to mock/VCR, at least verify the structure
-      assert_kind_of Array, response[:items]
+  test "imports, searches, aggregates, updates and checks existence on a live collection" do
+    collection = "noiseless_ts_live"
+    model = Class.new(Noiseless::Model) { def self.name = "TypesenseLiveProbe" }
+    Sync do
+      @adapter.create_index(collection, mappings: { properties: { title: { type: "text" },
+                                                                  status: { type: "keyword", facet: true } } }).wait
     end
+
+    bulk = Sync do
+      @adapter.bulk([
+                      { index: { _index: collection, _id: 1, data: { title: "ruby search", status: "draft" } } },
+                      { index: { _index: collection, _id: 2, data: { title: "ruby async", status: "live" } } }
+                    ]).wait
+    end
+    assert_not bulk["errors"]
+
+    Sync { @adapter.update_document(index: collection, id: 1, changes: { status: "live" }).wait }
+
+    builder = Noiseless::QueryBuilder.new(model).indexes([collection]).match(:title, "ruby").filter(:status, "live")
+    builder.aggregation(:by_status, :terms, field: :status)
+    result = Sync { @adapter.search(builder.to_ast, response_type: :results).wait }
+
+    assert_equal 2, result.total
+    assert_equal [{ "key" => "live", "doc_count" => 2 }], result.aggregations["by_status"]["buckets"]
+    assert(Sync { @adapter.index_exists?(collection).wait })
+    assert(Sync { @adapter.document_exists?(index: collection, id: 1).wait })
+    assert_not(Sync { @adapter.document_exists?(index: collection, id: 99).wait })
+
+    Sync do
+      @adapter.create_index("#{collection}_b", mappings: { properties: { title: { type: "text" } } }).wait
+      @adapter.index_document(index: "#{collection}_b", id: 3, document: { title: "ruby union" }).wait
+    end
+    union = Noiseless::QueryBuilder.new(model).indexes([collection, "#{collection}_b"]).match(:title, "ruby")
+    assert_equal 3, Sync { @adapter.search(union.to_ast, response_type: :results).wait }.total
+  ensure
+    Sync { [collection, "#{collection}_b"].each { @adapter.delete_index(it).wait } }
   end
 end

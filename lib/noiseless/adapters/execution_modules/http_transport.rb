@@ -90,19 +90,15 @@ module Noiseless
           end
         end
 
-        def post_request(path, body, content_type: "application/json")
+        def post_request(path, body, content_type: "application/json") = body_request(:post, path, body, content_type)
+        def put_request(path, body, content_type: "application/json") = body_request(:put, path, body, content_type)
+        def patch_request(path, body, content_type: "application/json") = body_request(:patch, path, body, content_type)
+
+        def body_request(verb, path, body, content_type)
           headers = body ? default_headers + [["content-type", content_type]] : default_headers
 
           with_client do |client|
-            client.post(path, headers, body)
-          end
-        end
-
-        def put_request(path, body, content_type: "application/json")
-          headers = body ? default_headers + [["content-type", content_type]] : default_headers
-
-          with_client do |client|
-            client.put(path, headers, body)
+            client.public_send(verb, path, headers, body)
           end
         end
 

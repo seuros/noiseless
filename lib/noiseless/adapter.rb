@@ -276,7 +276,7 @@ module Noiseless
       raise error_class.new(message, status: response.status, error_type: error.is_a?(Hash) ? error["type"] : nil)
     end
 
-    def head_exists?(response, context:)
+    def exists_response?(response, context:)
       return true if response.success?
       return false if response.status == 404
 

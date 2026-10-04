@@ -143,12 +143,13 @@ module Noiseless
     # @param text_query [String] The text query for BM25 matching
     # @param embedding [Array<Float>] The query embedding vector
     # @param field [Symbol] The embedding field name
+    # @param fields [Array<Symbol>] Fields the text query runs against
     # @param text_weight [Float] Weight for text search score (default: 0.5)
     # @param vector_weight [Float] Weight for vector search score (default: 0.5)
     # @param k [Integer] Number of nearest neighbors (default: 10)
-    def hybrid(text_query, embedding, field:, text_weight: 0.5, vector_weight: 0.5, k: 10)
+    def hybrid(text_query, embedding, field:, fields: [], text_weight: 0.5, vector_weight: 0.5, k: 10)
       vector_node = AST::Vector.new(field, embedding, k: k)
-      @hybrid = AST::Hybrid.new(text_query, vector_node, text_weight: text_weight, vector_weight: vector_weight)
+      @hybrid = AST::Hybrid.new(text_query, vector_node, fields:, text_weight:, vector_weight:)
       self
     end
 

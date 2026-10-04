@@ -12,7 +12,6 @@ module Noiseless
 
         private
 
-        # Override AST to Hash conversion for Typesense query format
         def ast_to_hash(ast_node)
           result = {}
 
@@ -22,73 +21,57 @@ module Noiseless
           query_by_fields = build_query_by_fields(ast_node.bool)
           result[:query_by] = query_by_fields unless query_by_fields.empty?
 
-          # Build filter expressions from filter nodes
           filter_expr = build_filter_expression(ast_node.bool)
           result[:filter_by] = filter_expr unless filter_expr.empty?
 
-          # Build sort expressions from sort nodes
           sort_expr = build_sort_expression(ast_node.sort)
           result[:sort_by] = sort_expr unless sort_expr.empty?
 
-          # Add pagination
-          pagination = build_pagination_params(ast_node.paginate)
-          result.merge!(pagination)
+          result.merge!(build_pagination_params(ast_node.paginate))
+          result[:enable_highlight_v1] = false
 
-          # Field collapsing -> Typesense group_by
           if ast_node.collapse
             result[:group_by] = ast_node.collapse.field
-            result[:group_limit] = 1 # Collapse shows 1 per group by default
-            if ast_node.collapse.max_concurrent_group_searches
-              # Typesense v30+: improve found accuracy for grouped results up to this threshold.
-              result[:group_max_candidates] = ast_node.collapse.max_concurrent_group_searches
-            end
+            result[:group_limit] = 1
           end
 
-          # Aggregations -> Typesense facet_by
-          if ast_node.aggregations.any?
-            facet_fields = ast_node.aggregations
-                                   .select { |agg| agg.type == :terms }
-                                   .filter_map(&:field)
-
-            result[:facet_by] = facet_fields.join(",") if facet_fields.any?
+          terms_aggregations = ast_node.aggregations.select { it.type == :terms && it.field }
+          if terms_aggregations.any?
+            result[:facet_by] = terms_aggregations.map(&:field).uniq.join(",")
+            result[:aggregation_names] = terms_aggregations.to_h { [it.field, it.name] }
           end
 
-          # Vector search -> Typesense vector_query
           if ast_node.vector_search?
             vector = ast_node.vector
-            # Typesense uses format: "field_name:([vector], k:N)"
-            vector_str = vector.embedding.join(",")
-            result[:vector_query] = "#{vector.field}:([#{vector_str}], k:#{vector.k})"
+            result[:vector_query] = "#{vector.field}:([#{vector.embedding.join(',')}], k:#{vector.k})"
+            result[:exclude_fields] = vector.field.to_s
           end
 
-          # Hybrid search -> Typesense native hybrid with q + vector_query
           if ast_node.hybrid_search?
             hybrid = ast_node.hybrid
             vector = hybrid.vector
-            vector_str = vector.embedding.join(",")
+            raise ArgumentError, "Typesense hybrid search needs fields: to run the text query against" if hybrid.fields.empty?
 
-            # Typesense natively supports hybrid by combining q and vector_query
             result[:q] = hybrid.text_query
-            result[:vector_query] = "#{vector.field}:([#{vector_str}], k:#{vector.k}, alpha:#{hybrid.vector_weight})"
+            result[:query_by] = hybrid.fields.join(",")
+            result[:vector_query] =
+              "#{vector.field}:([#{vector.embedding.join(',')}], k:#{vector.k}, alpha:#{hybrid.vector_weight})"
+            result[:exclude_fields] = vector.field.to_s
           end
 
-          # Image search -> Typesense image embedding search
           if ast_node.image_search?
             img = ast_node.image_query
-            # Typesense accepts image URL or base64 directly in vector_query
-            result[:vector_query] = "#{img.field}:(#{img.image_data}, k:#{img.k})"
+            result[:vector_query] = "#{img.field}:([], image:#{img.image_data}, k:#{img.k})"
+            result[:exclude_fields] = img.field.to_s
           end
 
-          # Conversational/RAG search
           if ast_node.conversational?
             conv = ast_node.conversation
             result[:conversation] = true
             result[:conversation_model_id] = conv.model_id
             result[:conversation_id] = conv.conversation_id if conv.conversation_id
-            result[:system_prompt] = conv.system_prompt if conv.system_prompt
           end
 
-          # JOINs across collections
           if ast_node.has_joins?
             include_fields = ast_node.joins.map do |join_node|
               fields = join_node.include_fields.join(", ")
@@ -97,7 +80,6 @@ module Noiseless
             result[:include_fields] = include_fields.join(", ")
           end
 
-          # Union-search related options (Typesense v30+).
           result[:remove_duplicates] = ast_node.remove_duplicates unless ast_node.remove_duplicates.nil?
           result[:facet_sample_slope] = ast_node.facet_sample_slope unless ast_node.facet_sample_slope.nil?
           result[:pinned_hits] = ast_node.pinned_hits unless ast_node.pinned_hits.nil?
@@ -125,10 +107,8 @@ module Noiseless
         end
 
         def build_filter_expression(bool_node)
-          # Convert filter and range nodes to Typesense filter expressions
-          filters = bool_node.filter.map { |filter| "#{filter.field}:=#{filter.value}" }
+          filters = bool_node.filter.map { |filter| "#{filter.field}:=#{filter_value(filter.value)}" }
 
-          # Add range filters from must clause
           range_filters = bool_node.must.filter_map do |node|
             next unless node.is_a?(AST::Range)
 
@@ -143,185 +123,228 @@ module Noiseless
           (filters + range_filters).compact.join(" && ")
         end
 
-        def build_sort_expression(sort_nodes)
-          # Convert sort nodes to Typesense sort format
-          sorts = sort_nodes.map do |sort|
-            direction = sort.direction == :desc ? "desc" : "asc"
-            "#{sort.field}:#{direction}"
+        def filter_value(value)
+          case value
+          when Array then "[#{value.map { filter_value(it) }.join(',')}]"
+          when Numeric, true, false then value.to_s
+          else
+            string = value.to_s
+            raise ArgumentError, "Typesense filter values cannot contain backticks: #{string.inspect}" if string.include?("`")
+
+            "`#{string}`"
           end
-          sorts.join(",")
+        end
+
+        def build_sort_expression(sort_nodes)
+          sort_nodes.map { |sort| "#{sort.field}:#{sort.direction == :desc ? 'desc' : 'asc'}" }.join(",")
         end
 
         def build_pagination_params(paginate_node)
-          return { page: 1, per_page: 20 } unless paginate_node
-
-          {
-            page: paginate_node.page,
-            per_page: paginate_node.per_page
-          }
+          { page: paginate_node&.page || 1, per_page: paginate_node&.per_page || 20 }
         end
 
         def execute_search(query_hash, indexes: [], **_opts)
-          collection = Array(indexes).first
-          raise Noiseless::SearchError, "Typesense search needs a collection" unless collection
+          collections = Array(indexes).map(&:to_s)
+          raise Noiseless::SearchError, "Typesense search needs a collection" if collections.empty?
 
-          # Convert query_hash to URL params for Typesense
-          params = query_hash.map { |k, v| "#{k}=#{CGI.escape(v.to_s)}" }.join("&")
-          response = get_request("/collections/#{collection}/documents/search?#{params}")
-          result = parse_json_response!(response, error_class: Noiseless::SearchError, context: "search #{collection}")
+          aggregation_names = query_hash[:aggregation_names] || {}
+          params = query_hash.except(:aggregation_names, :remove_duplicates)
+          context = "search #{collections.join(',')}"
 
-          # Convert Typesense format to Elasticsearch-like format
-          {
-            took: result["search_time_ms"] || 0,
-            timed_out: false,
-            _shards: { total: 1, successful: 1, skipped: 0, failed: 0 },
-            hits: {
-              total: { value: result["found"] || 0, relation: "eq" },
-              max_score: nil,
-              hits: (result["hits"] || []).map do |hit|
-                {
-                  _index: collection,
-                  _type: "_doc",
-                  _id: hit["document"]["id"],
-                  _score: hit["text_match"] || 1.0,
-                  _source: hit["document"]
-                }
-              end
-            }
-          }
+          result = if collections.one?
+                     body = { searches: [params.merge(collection: collections.first)] }
+                     single = post_json!("/multi_search", body, context:).fetch("results").first
+                     raise_search_error!(single, context) if single["error"]
+                     single
+                   else
+                     body = { union: true, searches: collections.map { params.except(:page, :per_page).merge(collection: it) } }
+                     body[:remove_duplicates] = query_hash[:remove_duplicates] unless query_hash[:remove_duplicates].nil?
+                     post_json!("/multi_search?page=#{params[:page]}&per_page=#{params[:per_page]}", body, context:)
+                   end
+
+          search_response(result, collections.first, aggregation_names)
+        end
+
+        def post_json!(path, body, context:)
+          response = post_request(path, JSON.generate(body))
+          parse_json_response!(response, error_class: Noiseless::SearchError, context:)
         ensure
           response&.close
+        end
+
+        def raise_search_error!(result, context)
+          raise Noiseless::SearchError.new("#{context}: #{result['error']}", status: result["code"])
+        end
+
+        def search_response(result, default_collection, aggregation_names)
+          hits = if result["grouped_hits"]
+                   result["grouped_hits"].filter_map { it["hits"].first }
+                 else
+                   result["hits"] || []
+                 end
+
+          {
+            "took" => result["search_time_ms"] || 0,
+            "timed_out" => false,
+            "hits" => {
+              "total" => { "value" => result["found"] || 0, "relation" => "eq" },
+              "max_score" => nil,
+              "hits" => hits.map { search_hit(it, default_collection) }
+            },
+            "aggregations" => facet_aggregations(result["facet_counts"], aggregation_names)
+          }
+        end
+
+        def search_hit(hit, default_collection)
+          score = hit.dig("hybrid_search_info", "rank_fusion_score") ||
+                  (hit["vector_distance"] && (1.0 - hit["vector_distance"])) ||
+                  hit["text_match"] || 1.0
+
+          {
+            "_index" => hit["collection"] || default_collection,
+            "_id" => hit.dig("document", "id"),
+            "_score" => score,
+            "_source" => hit["document"]
+          }
+        end
+
+        def facet_aggregations(facet_counts, aggregation_names)
+          Array(facet_counts).each_with_object({}) do |facet, aggregations|
+            name = aggregation_names.fetch(facet["field_name"], facet["field_name"])
+            buckets = facet["counts"].map { { "key" => it["value"], "doc_count" => it["count"] } }
+            aggregations[name] = { "buckets" => buckets }
+          end
         end
 
         def execute_bulk(actions, **_opts)
-          # Typesense uses different endpoints for different operations
-          results = actions.map do |action|
-            if action[:index]
-              collection = action[:index][:_index]
-              id = action[:index][:_id]
-              document = action[:index][:data]
+          items = Array.new(actions.size)
+          indexed = actions.each_with_index.group_by { |action, _| action.dig(:index, :_index) || action.dig(:delete, :_index) }
 
-              path = "/collections/#{collection}/documents"
-              body = JSON.generate(document.merge(id: id))
-
-              response = post_request(path, body)
-              result = JSON.parse(response.read)
-              response.close
-
-              { index: { _id: result["id"], status: 201, result: "created" } }
-            elsif action[:delete]
-              collection = action[:delete][:_index]
-              id = action[:delete][:_id]
-
-              path = "/collections/#{collection}/documents/#{id}"
-
-              response = delete_request(path)
-              response.close
-
-              { delete: { _id: id, status: 200, result: "deleted" } }
-            else
-              { error: { status: 400, error: "Unsupported action" } }
-            end
+          indexed.each do |collection, pairs|
+            imports, deletes = pairs.partition { |action, _| action[:index] }
+            import_documents(collection, imports, items) if imports.any?
+            delete_documents(collection, deletes, items) if deletes.any?
           end
 
-          { items: results }
-        rescue StandardError => e
-          { items: [], errors: true, error: { type: e.class.name, reason: e.message } }
+          { "items" => items, "errors" => items.any? { it.values.first["error"] } }
+        end
+
+        def import_documents(collection, pairs, items)
+          jsonl = pairs.map { |action, _| JSON.generate(typesense_document(action[:index][:data], action[:index][:_id])) }.join("\n")
+          response = post_request("/collections/#{collection}/documents/import?action=upsert", jsonl, content_type: "text/plain")
+          body = response.read
+          unless response.success?
+            raise Noiseless::RequestError.new("import #{collection}: #{error_message(body, response.status)}", status: response.status)
+          end
+
+          body.each_line.zip(pairs).each do |line, (action, position)|
+            result = JSON.parse(line)
+            items[position] = {
+              "index" => {
+                "_index" => collection,
+                "_id" => action[:index][:_id].to_s,
+                "status" => result["success"] ? 201 : result["code"],
+                "error" => (result["error"] unless result["success"])
+              }.compact
+            }
+          end
+        ensure
+          response&.close
+        end
+
+        def delete_documents(collection, pairs, items)
+          ids = pairs.map { |action, _| action[:delete][:_id] }
+          filter = CGI.escape("id:#{filter_value(ids.map(&:to_s))}")
+          response = delete_request("/collections/#{collection}/documents?filter_by=#{filter}")
+          parse_json_response!(response, context: "delete documents #{collection}")
+
+          pairs.each do |action, position|
+            items[position] = { "delete" => { "_index" => collection, "_id" => action[:delete][:_id].to_s, "status" => 200 } }
+          end
+        ensure
+          response&.close
+        end
+
+        def typesense_document(document, id)
+          document.to_h.transform_keys(&:to_s).merge("id" => id.to_s)
+        end
+
+        def error_message(body, status)
+          parsed = JSON.parse(body)
+          parsed.is_a?(Hash) && parsed["message"] ? parsed["message"] : "HTTP #{status}"
+        rescue JSON::ParserError
+          "HTTP #{status}"
         end
 
         def execute_create_index(collection_name, mappings: nil, **_opts)
-          # Typesense calls indexes "collections"
-          schema = {
-            name: collection_name,
-            fields: []
-          }
+          properties = (mappings || {}).with_indifferent_access[:properties] || {}
+          fields = properties.map { |name, config| typesense_field(name, config) }
+          fields = [{ name: ".*", type: "auto" }] if fields.empty?
 
-          # Convert mappings to Typesense schema if provided
-          if mappings && mappings["properties"]
-            schema[:fields] = mappings["properties"].map do |field_name, field_config|
-              {
-                name: field_name,
-                type: map_type_to_typesense(field_config["type"] || "string"),
-                facet: field_config["facet"] || false
-              }
-            end
-          end
+          response = post_request("/collections", JSON.generate(name: collection_name, fields:))
+          result = parse_json_response!(response, context: "create collection #{collection_name}")
 
-          body = JSON.generate(schema)
-          response = post_request("/collections", body)
-          result = JSON.parse(response.read)
-
-          { acknowledged: true, index: result["name"] }
-        rescue StandardError => e
-          { acknowledged: false, error: { type: e.class.name, reason: e.message } }
+          { "acknowledged" => true, "index" => result["name"] }
         ensure
           response&.close
+        end
+
+        def typesense_field(name, config)
+          type = map_type_to_typesense(config[:type].to_s)
+          field = { name: name.to_s, type: type, optional: true }
+          field[:num_dim] = config[:dims] || config[:dimension] if type == "float[]"
+          field[:facet] = true if config[:facet]
+          field
         end
 
         def execute_delete_index(collection_name, **_opts)
           response = delete_request("/collections/#{collection_name}")
-          JSON.parse(response.read)
+          return { "acknowledged" => true, "result" => "not_found" } if response.status == 404
 
-          { acknowledged: true }
-        rescue StandardError => e
-          { acknowledged: false, error: { type: e.class.name, reason: e.message } }
+          parse_json_response!(response, context: "delete collection #{collection_name}")
+          { "acknowledged" => true }
         ensure
           response&.close
         end
 
         def execute_index_exists?(collection_name)
-          response = head_request("/collections/#{collection_name}")
-          head_exists?(response, context: "collection exists #{collection_name}")
+          response = get_request("/collections/#{collection_name}")
+          exists_response?(response, context: "collection exists #{collection_name}")
         ensure
           response&.close
         end
 
         def execute_index_document(collection, id, document, **_opts)
-          path = "/collections/#{collection}/documents"
-          body = JSON.generate(document.merge(id: id))
+          response = post_request("/collections/#{collection}/documents?action=upsert",
+                                  JSON.generate(typesense_document(document, id)))
+          result = parse_json_response!(response, context: "index document #{collection}/#{id}")
 
-          response = post_request(path, body)
-          result = JSON.parse(response.read)
-
-          { _index: collection, _id: result["id"], result: "created" }
-        rescue StandardError => e
-          { _index: collection, _id: id, result: "error", error: { type: e.class.name, reason: e.message } }
+          { "_index" => collection, "_id" => result["id"], "result" => "upserted" }
         ensure
           response&.close
         end
 
         def execute_update_document(collection, id, changes, **_opts)
-          # Typesense doesn't have partial updates, so we need to fetch and merge
-          get_response = get_request("/collections/#{collection}/documents/#{id}")
-          document = JSON.parse(get_response.read)
-          get_response.close
+          response = patch_request("/collections/#{collection}/documents/#{id}", JSON.generate(changes))
+          result = parse_json_response!(response, context: "update document #{collection}/#{id}")
 
-          updated_document = document.merge(changes).merge(id: id)
-          body = JSON.generate(updated_document)
-
-          response = put_request("/collections/#{collection}/documents/#{id}", body)
-          result = JSON.parse(response.read)
-
-          { _index: collection, _id: result["id"], result: "updated" }
-        rescue StandardError => e
-          { _index: collection, _id: id, result: "error", error: { type: e.class.name, reason: e.message } }
+          { "_index" => collection, "_id" => result["id"], "result" => "updated" }
         ensure
-          response&.close if defined?(response)
+          response&.close
         end
 
         def execute_delete_document(collection, id, **_opts)
-          response = delete_request("/collections/#{collection}/documents/#{id}")
+          response = delete_request("/collections/#{collection}/documents/#{id}?ignore_not_found=true")
+          parse_json_response!(response, context: "delete document #{collection}/#{id}")
 
-          { _index: collection, _id: id, result: "deleted" }
-        rescue StandardError => e
-          { _index: collection, _id: id, result: "error", error: { type: e.class.name, reason: e.message } }
+          { "_index" => collection, "_id" => id.to_s, "result" => "deleted" }
         ensure
           response&.close
         end
 
         def execute_document_exists?(collection, id)
-          response = head_request("/collections/#{collection}/documents/#{id}")
-          head_exists?(response, context: "document exists #{collection}/#{id}")
+          response = get_request("/collections/#{collection}/documents/#{id}?include_fields=id")
+          exists_response?(response, context: "document exists #{collection}/#{id}")
         ensure
           response&.close
         end
@@ -330,7 +353,6 @@ module Noiseless
           response = get_request("/health")
           health_data = JSON.parse(response.read)
 
-          # Convert Typesense health format to match expected format
           {
             cluster_name: "typesense",
             status: health_data["ok"] ? "green" : "red",
@@ -358,30 +380,17 @@ module Noiseless
 
         def default_headers
           headers = super
-
-          # Add Typesense API key if configured
-          if @connection_params && @connection_params[:api_key]
-            headers << ["X-TYPESENSE-API-KEY",
-                        @connection_params[:api_key]]
-          end
-
+          headers << ["X-TYPESENSE-API-KEY", @connection_params[:api_key]] if @connection_params&.dig(:api_key)
           headers
         end
 
-        # rubocop:disable-next Lint/DuplicateBranch
         def map_type_to_typesense(elasticsearch_type)
-          # Map Elasticsearch types to Typesense types
           case elasticsearch_type
-          when "text", "keyword"
-            "string"
-          when "long", "integer", "short", "byte", "date"
-            "int64" # date uses Unix timestamps
-          when "double", "float", "half_float", "scaled_float"
-            "float"
-          when "boolean"
-            "bool"
-          else
-            "string" # Default to string for unknown types
+          when "long", "integer", "short", "byte", "date" then "int64"
+          when "double", "float", "half_float", "scaled_float" then "float"
+          when "boolean" then "bool"
+          when "dense_vector", "knn_vector" then "float[]"
+          else "string"
           end
         end
       end

@@ -46,7 +46,7 @@ services:
       - search-network
 
   typesense:
-    image: typesense/typesense:30.1
+    image: typesense/typesense:30.2
     container_name: typesense
     environment:
       - TYPESENSE_DATA_DIR=/data

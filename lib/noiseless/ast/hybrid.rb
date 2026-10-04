@@ -5,16 +5,18 @@ module Noiseless
     # Hybrid search node combining text and vector search
     # Supports weighted combination of BM25 text scores and kNN vector scores
     class Hybrid < Node
-      attr_reader :text_query, :vector, :text_weight, :vector_weight
+      attr_reader :text_query, :vector, :fields, :text_weight, :vector_weight
 
       # @param text_query [String] The text query for BM25 matching
       # @param vector [AST::Vector] The vector search node
+      # @param fields [Array<Symbol>] Fields the text query runs against
       # @param text_weight [Float] Weight for text search score (0.0-1.0)
       # @param vector_weight [Float] Weight for vector search score (0.0-1.0)
-      def initialize(text_query, vector, text_weight: 0.5, vector_weight: 0.5)
+      def initialize(text_query, vector, fields: [], text_weight: 0.5, vector_weight: 0.5)
         super()
         @text_query = text_query
         @vector = vector
+        @fields = Array(fields).map(&:to_s)
         @text_weight = text_weight
         @vector_weight = vector_weight
       end

@@ -54,7 +54,7 @@ class MultiEngineTest < ActiveSupport::TestCase
     assert_includes ts_query.keys, :sort_by
     assert_equal "Ruby", ts_query[:q]
     assert_equal "title", ts_query[:query_by]
-    assert_equal "status:=published", ts_query[:filter_by]
+    assert_equal "status:=`published`", ts_query[:filter_by]
     assert_equal "created_at:desc", ts_query[:sort_by]
 
     # Verify they're all different formats
