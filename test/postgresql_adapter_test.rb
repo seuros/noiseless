@@ -191,6 +191,34 @@ class VectorAstNodeTest < ActiveSupport::TestCase
     node = Noiseless::AST::Vector.new(:embedding, nil)
     assert_equal 0, node.dimension
   end
+
+  test "rejects embeddings that are not finite numbers" do
+    [
+      ["0.1]'::vector) AS x, (SELECT 1)--"],
+      [0.1, nil],
+      [[0.1]],
+      [Float::INFINITY],
+      [Float::NAN],
+      []
+    ].each do |embedding|
+      assert_raises(ArgumentError, "Expected #{embedding.inspect} to be rejected") do
+        Noiseless::AST::Vector.new(:embedding, embedding)
+      end
+    end
+  end
+
+  test "coerces numeric strings and k so JSON-derived input keeps working" do
+    node = Noiseless::AST::Vector.new(:embedding, ["0.1", 0.2, 3], k: "5", distance_metric: "l2")
+
+    assert_equal [0.1, 0.2, 3.0], node.embedding
+    assert_equal 5, node.k
+    assert_equal :l2, node.distance_metric
+  end
+
+  test "rejects unknown distance metrics and non-integer k" do
+    assert_raises(ArgumentError) { Noiseless::AST::Vector.new(:embedding, [0.1], distance_metric: :bogus) }
+    assert_raises(ArgumentError) { Noiseless::AST::Vector.new(:embedding, [0.1], k: "ten") }
+  end
 end
 
 class QueryBuilderVectorTest < ActiveSupport::TestCase

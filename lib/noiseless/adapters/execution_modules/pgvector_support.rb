@@ -28,7 +28,7 @@ module Noiseless
                           distance_metric: :cosine)
           return scope unless pgvector_available?
 
-          vector_string = "[#{embedding.join(',')}]"
+          vector_string = vector_literal(embedding)
           distance_op = distance_operator(distance_metric)
 
           # Build the query with distance calculation
@@ -65,7 +65,9 @@ module Noiseless
                           text_weight: 0.5, vector_weight: 0.5, limit: 20)
           return scope unless pgvector_available?
 
-          vector_string = "[#{embedding.join(',')}]"
+          vector_string = vector_literal(embedding)
+          text_weight = Float(text_weight)
+          vector_weight = Float(vector_weight)
           text_conditions = text_fields.map { |f| "similarity(#{quoted_column(f)}, ?)" }.join(" + ")
           text_similarity_count = text_fields.size
 
@@ -101,7 +103,7 @@ module Noiseless
         def knn_search(model, embedding, k: 10, column: :embedding, filters: {})
           return [] unless pgvector_available?
 
-          vector_string = "[#{embedding.join(',')}]"
+          vector_string = vector_literal(embedding)
 
           scope = model.all
           scope = scope.where(filters) if filters.any?
@@ -124,36 +126,36 @@ module Noiseless
         def store_embedding(record, embedding, column: :embedding)
           return false unless pgvector_available?
 
-          vector_string = "[#{embedding.join(',')}]"
-          record.update_column(column, vector_string)
+          record.update_column(column, vector_literal(embedding))
         end
 
         # Batch store embeddings
         #
         # @param model [Class] The ActiveRecord model
-        # @param embeddings [Hash<String, Array<Float>>] Map of ID -> embedding
+        # @param embeddings [Hash<Object, Array<Float>>] Map of primary key -> embedding
         # @param column [Symbol] The column to store embeddings
+        # @return [Integer] Number of rows updated
         #
         def batch_store_embeddings(model, embeddings, column: :embedding)
           return 0 unless pgvector_available?
+          return 0 if embeddings.empty?
 
-          # Use UPDATE FROM VALUES for efficient batch update
-          values = embeddings.map do |id, emb|
-            "(#{ActiveRecord::Base.connection.quote(id)}, '[#{emb.join(',')}]'::vector)"
-          end.join(",")
+          model.with_connection do |connection|
+            table = connection.quote_table_name(model.table_name)
+            primary_key = model.primary_key
+            pk_type = model.columns_hash.fetch(primary_key.to_s).sql_type
 
-          sql = <<~SQL.squish
-            UPDATE #{model.table_name}
-            SET #{column} = v.embedding
-            FROM (VALUES #{values}) AS v(id, embedding)
-            WHERE #{model.table_name}.id = v.id::uuid
-          SQL
+            values = embeddings.map do |id, embedding|
+              "(#{connection.quote(id)}::#{pk_type}, '#{vector_literal(embedding)}'::vector)"
+            end
 
-          ActiveRecord::Base.connection.execute(sql)
-          embeddings.size
-        rescue StandardError => e
-          Rails.logger.error("Failed to batch store embeddings: #{e.message}")
-          0
+            connection.exec_update(<<~SQL.squish, "Noiseless batch_store_embeddings")
+              UPDATE #{table}
+              SET #{connection.quote_column_name(column)} = v.embedding
+              FROM (VALUES #{values.join(', ')}) AS v(id, embedding)
+              WHERE #{table}.#{connection.quote_column_name(primary_key)} = v.id
+            SQL
+          end
         end
 
         # Find similar records to a given record
@@ -180,6 +182,12 @@ module Noiseless
         end
 
         private
+
+        # pgvector operators take no bind parameter in SELECT or ORDER BY, so
+        # the literal is interpolated; coercion guarantees it holds only floats.
+        def vector_literal(embedding)
+          "[#{AST::Vector.coerce_embedding(embedding).join(',')}]"
+        end
 
         def distance_operator(metric)
           case metric
