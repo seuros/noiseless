@@ -13,7 +13,7 @@ module Noiseless
 
         private
 
-        def execute_bulk(actions, **_opts)
+        def execute_bulk(actions, refresh: nil, **_opts)
           body = actions.map do |action|
             if action[:index]
               action_line = { index: { _index: action[:index][:_index], _id: action[:index][:_id] } }
@@ -24,7 +24,7 @@ module Noiseless
             end
           end.join
 
-          response = post_request("/_bulk", body, content_type: "application/x-ndjson")
+          response = post_request("/_bulk#{refresh_query(refresh)}", body, content_type: "application/x-ndjson")
           parse_json_response!(response, context: "bulk")
         ensure
           response&.close
@@ -41,6 +41,10 @@ module Noiseless
           response&.close
         end
 
+        def refresh_query(refresh)
+          refresh ? "?refresh=#{refresh}" : ""
+        end
+
         def execute_refresh_index(index_name)
           response = post_request("/#{index_name}/_refresh", nil)
           parse_json_response!(response, context: "refresh index #{index_name}")
@@ -55,17 +59,17 @@ module Noiseless
           response&.close
         end
 
-        def execute_update_document(index, id, changes, **_opts)
+        def execute_update_document(index, id, changes, refresh: nil, **_opts)
           body = JSON.generate(doc: changes)
 
-          response = post_request("/#{index}/_update/#{id}", body)
+          response = post_request("/#{index}/_update/#{id}#{refresh_query(refresh)}", body)
           parse_json_response!(response, context: "update document #{index}/#{id}")
         ensure
           response&.close
         end
 
-        def execute_delete_document(index, id, **_opts)
-          response = delete_request("/#{index}/_doc/#{id}")
+        def execute_delete_document(index, id, refresh: nil, **_opts)
+          response = delete_request("/#{index}/_doc/#{id}#{refresh_query(refresh)}")
           # 404 covers both a missing document and a missing index; either way
           # the delete is idempotent.
           return { "_index" => index, "_id" => id, "result" => "not_found" } if response.status == 404

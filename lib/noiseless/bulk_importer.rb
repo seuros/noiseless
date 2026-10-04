@@ -19,11 +19,7 @@ module Noiseless
                **)
       @errors.clear
 
-      # Create index if force is true
-      if force
-        delete_index
-        create_index
-      end
+      recreate_index if force
 
       # Get records to import
       records = resolve_records(relation_or_records)
@@ -40,7 +36,7 @@ module Noiseless
         # Execute bulk operation
         begin
           client = Noiseless.connections.client(@connection)
-          response = client.bulk(actions, refresh: refresh, **)
+          response = client.bulk(actions, refresh: refresh, **).wait
 
           # Check for errors in response
           collect_errors(response, processed_batch)
@@ -166,30 +162,17 @@ module Noiseless
                       end
     end
 
-    def delete_index
+    def recreate_index
       client = Noiseless.connections.client(@connection)
-      client.delete_index(index_name)
-    rescue StandardError => _e
-      # Index might not exist, which is fine
-      nil
+      client.delete_index(index_name).wait
+      result = client.create_index(index_name, **index_config).wait
+      return if result.with_indifferent_access[:acknowledged]
+
+      raise Noiseless::Error, "index #{index_name} was deleted but could not be recreated: #{result.inspect}"
     end
 
-    def create_index
-      return unless model_class.respond_to?(:mapping)
-
-      mapping_block = model_class.mapping
-      return unless mapping_block
-
-      begin
-        _client = Noiseless.connections.client(@connection)
-        # This would need to be implemented in the adapter
-        # client.create_index(index_name, mapping: mapping_block)
-      rescue StandardError => e
-        @errors << {
-          error: "Failed to create index: #{e.message}",
-          index: index_name
-        }
-      end
+    def index_config
+      model_class.respond_to?(:mapping) ? MappingDefinitionProcessor.process(model_class.mapping) : {}
     end
   end
 end
