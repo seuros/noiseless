@@ -8,7 +8,7 @@ require "bundler/gem_tasks" if File.exist?("noiseless.gemspec")
 require "rake/testtask"
 
 # Load rake tasks from lib/tasks
-Dir.glob("lib/tasks/*.rake").each { |r| load r }
+Dir.glob(File.expand_path("lib/tasks/*.rake", __dir__)).each { |r| load r }
 
 Rake::TestTask.new(:test) do |t|
   t.libs << "test"

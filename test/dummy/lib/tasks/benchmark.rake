@@ -12,11 +12,11 @@ namespace :benchmark do
   task clean: :environment do
     require "async"
 
-    Rails.logger.tagged("BENCHMARK", "CLEAN") { Rails.logger.info "Cleaning benchmark data from all engines..." }
+    puts "Cleaning benchmark data from all engines..."
 
     # Clean PostgreSQL
     Article.delete_all
-    Rails.logger.info "PostgreSQL cleaned"
+    puts "PostgreSQL cleaned"
 
     # Clean search engines
     Benchmark::Config.enabled_engines.each do |engine|
@@ -27,21 +27,21 @@ namespace :benchmark do
         client = Noiseless.connections.client(adapter_key)
         begin
           client.delete_index("articles").wait
-          Rails.logger.info "#{engine.to_s.capitalize} index deleted"
+          puts "#{engine.to_s.capitalize} index deleted"
         rescue StandardError => e
-          Rails.logger.warn "#{engine.to_s.capitalize}: #{e.message}"
+          puts "#{engine.to_s.capitalize}: #{e.message}"
         end
       end
     end
 
-    Rails.logger.info "All engines cleaned"
+    puts "All engines cleaned"
   end
 
   desc "Seed all 4 engines with 10k benchmark articles"
   task seed: :environment do
     require "async"
 
-    Rails.logger.tagged("BENCHMARK", "SEED") { Rails.logger.info "Seeding all engines with benchmark data..." }
+    puts "Seeding all engines with benchmark data..."
 
     # Seed PostgreSQL
     Benchmark::Loader.load_postgresql
@@ -53,9 +53,9 @@ namespace :benchmark do
       Benchmark::Loader.load_search_engine(engine.to_s.capitalize, adapter_key)
     end
 
-    Rails.logger.info "All engines seeded. Waiting #{Benchmark::Config.settle_time}s for engines to settle..."
+    puts "All engines seeded. Waiting #{Benchmark::Config.settle_time}s for engines to settle..."
     sleep Benchmark::Config.settle_time
-    Rails.logger.info "Ready for benchmarking"
+    puts "Ready for benchmarking"
   end
 
   desc "Run simple query benchmarks (auto-seeds if needed)"
@@ -113,7 +113,7 @@ namespace :benchmark do
   # Private task to ensure data exists before running benchmarks
   task _ensure_data: :environment do
     unless Benchmark::Loader.data_exists?
-      Rails.logger.warn "No benchmark data found. Seeding automatically..."
+      puts "No benchmark data found. Seeding automatically..."
       Rake::Task["benchmark:seed"].invoke
     end
   end

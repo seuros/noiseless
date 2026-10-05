@@ -18,7 +18,7 @@ module Benchmark
     end
 
     def self.load_postgresql
-      Rails.logger.tagged("LOAD") { Rails.logger.info "Loading PostgreSQL..." }
+      puts "Loading PostgreSQL..."
       start = Time.now
 
       Article.delete_all
@@ -27,14 +27,14 @@ module Benchmark
 
       duration = Time.now - start
       count = Article.count
-      Rails.logger.info "PostgreSQL: #{count} records loaded in #{duration.round(2)}s"
+      puts "PostgreSQL: #{count} records loaded in #{duration.round(2)}s"
 
       # Register model with PostgreSQL adapter
       Noiseless.connections.client(:postgresql).register_model(Article, index_name: "articles")
     end
 
     def self.load_search_engine(engine_name, adapter_key)
-      Rails.logger.tagged("INDEX") { Rails.logger.info "Loading #{engine_name}..." }
+      puts "Loading #{engine_name}..."
       start = Time.now
 
       Sync do
@@ -64,12 +64,14 @@ module Benchmark
           client.bulk(actions, refresh: false).wait
         end
 
-        # Refresh index
         client.indices.refresh(index: "articles")
       end
 
       duration = Time.now - start
-      Rails.logger.info "#{engine_name}: #{Article.count} records indexed in #{duration.round(2)}s"
+      indexed = Sync { Article::SearchFiction.new.paginate(per_page: 1).execute(connection: adapter_key).wait.total }
+      raise "#{engine_name} holds #{indexed} of #{Article.count} articles; indexing failed" unless indexed == Article.count
+
+      puts "#{engine_name}: #{indexed} records indexed in #{duration.round(2)}s (#{(indexed / duration).round} docs/s)"
     end
 
     def self.data_exists?
