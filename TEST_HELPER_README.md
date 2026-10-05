@@ -38,9 +38,9 @@ class Search::ProductTest < Noiseless::TestCase
   def test_searching_by_category
     # Auto-generates: search/product/searching_by_category.yml
   end
-  
+
   def test_filtering_suppliers
-    # Auto-generates: search/product/filtering_suppliers.yml  
+    # Auto-generates: search/product/filtering_suppliers.yml
   end
 end
 ```
@@ -85,7 +85,7 @@ end
 ```ruby
 def test_with_clean_index
   reset_index!("products")
-  
+
   results = Search::Product.all.execute
   assert_search_empty(results)
 end
@@ -95,7 +95,7 @@ end
 ```ruby
 def test_reset_everything
   reset_all_indexes!
-  
+
   # All search indexes are now empty
   assert_search_empty(Search::Product.all.execute)
   assert_search_empty(Search::User.all.execute)
@@ -106,7 +106,7 @@ end
 ```ruby
 class MyTest < Noiseless::TestCase
   reset_test_indexes "products", "users"
-  
+
   def test_clean_state
     # Indexes are automatically reset before each test
   end
@@ -122,9 +122,9 @@ def test_with_seeded_data
     { id: 1, name: "Ruby Book", category: "books" },
     { id: 2, name: "Python Guide", category: "books" }
   ]
-  
+
   seed_data!("products", products)
-  
+
   results = Search::Product.filter(:category, "books").execute
   assert_search_results(results, 2)
 end
@@ -136,7 +136,7 @@ class MyTest < Noiseless::TestCase
   setup_test_data "products", [
     { id: 1, name: "Test Product", category: "test" }
   ]
-  
+
   def test_with_setup_data
     # Data is automatically seeded before each test
     results = Search::Product.filter(:category, "test").execute
@@ -154,7 +154,7 @@ def test_debug_query
     .match(:name, "laptop")
     .filter(:category, "electronics")
     .sort(:price, :asc)
-  
+
   print_query(search)
   # Output:
   # 🔍 Generated Query AST:
@@ -172,7 +172,7 @@ end
 ```ruby
 def test_debug_curl
   search = Search::Product.featured.limit(5)
-  
+
   curl_command = print_curl(search)
   # Output:
   # 🐛 Debug cURL Command:
@@ -222,7 +222,7 @@ assert_search_includes(search, expected_product)
 ```ruby
 def test_search_speed
   search = Search::Product.featured.limit(10)
-  
+
   # Assert search completes within 100ms
   assert_search_performance(search, 100) do
     search.execute
@@ -234,7 +234,7 @@ def test_concurrent_performance
     Search::Product.by_name("ruby"),
     Search::Product.by_category("books")
   ]
-  
+
   assert_search_performance(nil, 200) do
     searches.map(&:execute)
   end
@@ -248,17 +248,17 @@ end
 class SearchComparisonTest < Noiseless::TestCase
   def test_compare_implementations
     query = "sustainable manufacturing"
-    
+
     # Test existing search
     noiseless_cassette(cassette_name: "existing_search") do
       @existing_results = Company.search(query)
     end
-    
+
     # Test Noiseless search
     noiseless_cassette(cassette_name: "noiseless_search") do
       @noiseless_results = Company::Search.by_name(query).execute
     end
-    
+
     # Compare results
     assert_equal @existing_results.count, @noiseless_results.size
   end
@@ -270,17 +270,17 @@ end
 class MultiEngineTest < Noiseless::TestCase
   def test_elasticsearch_vs_typesense
     search_query = Search::Product.by_name("laptop")
-    
+
     # Test Elasticsearch
     noiseless_cassette(cassette_name: "elasticsearch_search") do
       @es_results = search_query.execute(connection: :elasticsearch)
     end
-    
-    # Test Typesense  
+
+    # Test Typesense
     noiseless_cassette(cassette_name: "typesense_search") do
       @ts_results = search_query.execute(connection: :typesense)
     end
-    
+
     # Both should return results
     assert_search_results(@es_results)
     assert_search_results(@ts_results)
@@ -293,16 +293,16 @@ end
 class PerformanceRegressionTest < Noiseless::TestCase
   def test_search_performance_baseline
     search = Search::Product.complex_query
-    
+
     # Ensure search doesn't regress beyond baseline
     assert_search_performance(search, 150) do
       search.execute
     end
   end
-  
+
   def test_concurrent_search_scaling
     searches = 10.times.map { Search::Product.featured }
-    
+
     assert_search_performance(nil, 500) do
       searches.map { |s| s.execute }
     end
@@ -318,12 +318,12 @@ end
 VCR.configure do |config|
   config.cassette_library_dir = 'test/cassettes'
   config.hook_into :webmock
-  
+
   # Sensitive data filtering
   config.filter_sensitive_data('<OPENSEARCH_HOST>') do |interaction|
     URI(interaction.request.uri).host
   end
-  
+
   # Ignore local development hosts
   config.ignore_hosts 'localhost', '127.0.0.1', '0.0.0.0'
 end
@@ -357,7 +357,7 @@ end
 class Noiseless::CompanySearchTest < Noiseless::TestCase
   def test_supplier_search_flow
     # Auto-cassette: noiseless/company_search/supplier_search_flow.yml
-    
+
     search = Company::Search
       .suppliers_only
       .by_country("US")
@@ -365,29 +365,29 @@ class Noiseless::CompanySearchTest < Noiseless::TestCase
       .minimum_score(80)
       .sort(:sorting_score, :desc)
       .limit(20)
-    
+
     # Debug the query
     print_query(search)
-    
+
     # Execute with performance monitoring
     assert_search_performance(search, 300) do
       results = search.execute
-      
+
       # Validate results
       assert_search_results(results)
-      
+
       # Verify all results are suppliers
       # (This would require actual result parsing)
     end
   end
-  
+
   def test_geospatial_supplier_search
     london_lat, london_lon = 51.5074, -0.1278
-    
+
     search = Company::Search
       .near_location(london_lat, london_lon, "50km")
       .suppliers_only
-    
+
     results = search.execute
     assert_search_results(results, message: "Should find suppliers near London")
   end
@@ -402,7 +402,7 @@ end
 - **Fluent assertions** - Search-specific assertion helpers
 - **Debug utilities** - Easy query debugging and curl generation
 
-### ⚡ **Testing Efficiency**  
+### ⚡ **Testing Efficiency**
 - **VCR integration** - Record once, replay forever
 - **Index management** - Clean slate for every test
 - **Performance testing** - Built-in timing assertions
@@ -424,7 +424,7 @@ def test_search
   assert results.any?
 end
 
-# After  
+# After
 class CompanySearchTest < Noiseless::TestCase
   def test_search
     results = Company::Search.by_name("electronics").execute

@@ -9,7 +9,8 @@ vial :articles do
   variant :intro do
     id 1
     title "Introduction to Search Engines"
-    content "Search engines are powerful tools that help users find information quickly and efficiently. This article covers the basics of how search engines work."
+    content "Search engines are powerful tools that help users find information quickly and efficiently. " \
+            "This article covers the basics of how search engines work."
     author "John Doe"
     tags %w[search engines tutorial basics]
     published_at 7.days.ago

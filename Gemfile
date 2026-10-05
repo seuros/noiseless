@@ -5,8 +5,6 @@ source "https://rubygems.org"
 # Specify your gem's dependencies in noiseless.gemspec.
 gemspec
 
-gem "rubocop", ">= 1.84", require: false
-
 # Support testing against Rails edge/development branch
 if ENV["RAILS_VERSION"] == "dev"
   gem "activesupport", github: "rails/rails", branch: "main"
