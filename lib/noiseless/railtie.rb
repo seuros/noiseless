@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
 require "rails/railtie"
-require_relative "instrumentation"
-require_relative "runtime_reset_middleware"
 
 module Noiseless
   class Railtie < Rails::Railtie

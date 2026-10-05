@@ -1,12 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "../benchmark/config"
-require_relative "../benchmark/loader"
-require_relative "../benchmark/runner"
-require_relative "../benchmark/queries/simple"
-require_relative "../benchmark/queries/medium"
-require_relative "../benchmark/queries/complex"
-
 namespace :benchmark do
   desc "Clean all benchmark data from all 4 engines"
   task clean: :environment do

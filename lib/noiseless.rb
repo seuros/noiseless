@@ -118,10 +118,6 @@ module Noiseless
   loader.setup
   loader.eager_load if defined?(Rails) && Rails.respond_to?(:env) && Rails.env.test?
 
-  # Manually require response classes since they're in a subdirectory
-  require_relative "noiseless/response"
-  require_relative "noiseless/response_factory"
-
   # Global registry instance
   def self.registry
     ModelRegistry.instance

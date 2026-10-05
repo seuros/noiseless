@@ -21,6 +21,8 @@ require "noiseless"
 # Manually require test helper since it's ignored by Zeitwerk
 require "noiseless/test_helper"
 
+Dir[File.expand_path("support/**/*.rb", __dir__)].each { require it }
+
 module ActiveSupport
   class TestCase
     # Include Noiseless::TestHelper for all tests

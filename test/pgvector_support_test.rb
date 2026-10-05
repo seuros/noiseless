@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
-require_relative "dummy/app/models/article"
+require "test_helper"
 
 class PgvectorSupportTest < ActiveSupport::TestCase
   HOSTILE = ["0.1]'::vector) AS x, (SELECT 1 FROM articles LIMIT 1)--"].freeze

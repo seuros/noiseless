@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "execution_modules/typesense_execution"
 
 module Noiseless
   module Adapters
@@ -20,7 +19,7 @@ module Noiseless
       end
 
       class IndicesAPI < Adapters::IndicesAPI
-        def refresh(index: nil) # rubocop:disable Lint/UnusedMethodArgument
+        def refresh(index: nil)
           # Typesense doesn't require explicit refresh - documents are immediately available
           { "_shards" => { "total" => 1, "successful" => 1, "failed" => 0 } }
         end

@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "json"
-require_relative "es_compatible_execution"
 
 module Noiseless
   module Adapters

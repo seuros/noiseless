@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
-require_relative "dummy/app/models/article"
+require "test_helper"
 
 class IntrospectionTest < ActiveSupport::TestCase
   def setup

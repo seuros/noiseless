@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "execution_modules/postgresql_execution"
 
 module Noiseless
   module Adapters
@@ -21,7 +20,7 @@ module Noiseless
 
       attr_reader :model_class_cache
 
-      def initialize(hosts: nil, **connection_params) # rubocop:disable Lint/UnusedMethodArgument
+      def initialize(hosts: nil, **connection_params)
         @connection_params = connection_params
         @model_class_cache = {}
 
@@ -113,7 +112,7 @@ module Noiseless
           { "indices" => { index => {} } }
         end
 
-        def refresh(index:) # rubocop:disable Lint/UnusedMethodArgument
+        def refresh(index:)
           # No-op for PostgreSQL - queries always see latest data
           { "_shards" => { "total" => 1, "successful" => 1, "failed" => 0 } }
         end

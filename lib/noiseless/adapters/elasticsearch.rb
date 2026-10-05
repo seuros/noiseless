@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "execution_modules/elasticsearch_execution"
 
 module Noiseless
   module Adapters

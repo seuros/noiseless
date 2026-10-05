@@ -2,7 +2,6 @@
 
 require "async"
 require "json"
-require_relative "introspection"
 
 module Noiseless
   class Adapter

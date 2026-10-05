@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
-require_relative "dummy/app/models/article"
+require "test_helper"
 
 class IntegrationTest < ActiveSupport::TestCase
   # Dedicated index so seeding here can't clash with the mapping other tests

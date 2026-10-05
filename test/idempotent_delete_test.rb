@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
+require "test_helper"
 
 class IdempotentDeleteTest < ActiveSupport::TestCase
   MISSING_INDEX = "noiseless_idempotent_delete_missing"
