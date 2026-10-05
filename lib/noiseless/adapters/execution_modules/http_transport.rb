@@ -46,6 +46,11 @@ module Noiseless
         # with +pool_limit:+.
         DEFAULT_POOL_LIMIT = 16
 
+        # json 3 serializes objects it does not know with to_s, so a Time
+        # became "2025-12-11 14:18:40 UTC", which search engines reject.
+        # Falling back to as_json keeps ActiveSupport's ISO 8601 times.
+        JSON_CODER = JSON::Coder.new { |object| object.respond_to?(:as_json) ? object.as_json : object.to_s }
+
         BufferedResponse = Data.define(:status, :body) do
           def read = body
           def success? = (200..299).cover?(status)
@@ -149,6 +154,8 @@ module Noiseless
           raise Noiseless::ConnectionError,
                 "search backend unreachable#{location} (#{e.class}: #{e.message})"
         end
+
+        def dump_json(object) = JSON_CODER.dump(object)
 
         def default_headers
           [

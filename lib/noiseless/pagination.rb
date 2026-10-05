@@ -75,7 +75,7 @@ module Noiseless
 
       # Encode cursor for API response
       def encode
-        [JSON.generate({ f: field, v: value, d: direction })].pack("m0").tr("+/", "-_")
+        [ActiveSupport::JSON.encode({ f: field, v: value, d: direction })].pack("m0").tr("+/", "-_")
       end
 
       # Decode cursor from API request

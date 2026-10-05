@@ -13,7 +13,7 @@ module Noiseless
 
         def execute_search(query_hash, indexes: [], **_opts)
           path = indexes.any? ? "/#{indexes.join(',')}/_search" : "/_search"
-          body = JSON.generate(query_hash)
+          body = dump_json(query_hash)
 
           response = post_request(path, body)
           parse_json_response!(response, error_class: Noiseless::SearchError, context: "search")
@@ -26,7 +26,7 @@ module Noiseless
           body[:mappings] = mappings if mappings
           body[:settings] = settings if settings
 
-          response = put_request("/#{index_name}", body.any? ? JSON.generate(body) : nil)
+          response = put_request("/#{index_name}", body.any? ? dump_json(body) : nil)
           parse_json_response!(response, context: "create index #{index_name}")
         ensure
           response&.close
@@ -34,7 +34,7 @@ module Noiseless
 
         def execute_index_document(index, id, document, refresh: nil, **_opts)
           path = (id ? "/#{index}/_doc/#{id}" : "/#{index}/_doc") + query_string(refresh:)
-          body = JSON.generate(encode_document(document))
+          body = dump_json(encode_document(document))
 
           response = id ? put_request(path, body) : post_request(path, body)
           parse_json_response!(response, context: "index document #{index}/#{id}")

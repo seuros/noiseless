@@ -60,7 +60,7 @@ module Noiseless
           body = pipeline.is_a?(Hash) ? query_hash : query_hash.except(:search_pipeline)
           path = "/#{index_path}/_search#{query_string(search_pipeline: (pipeline unless pipeline.is_a?(Hash)))}"
 
-          response = post_request(path, JSON.generate(body))
+          response = post_request(path, dump_json(body))
           parse_json_response!(response, error_class: Noiseless::SearchError, context: "search #{index_path}")
         ensure
           response&.close
@@ -72,7 +72,7 @@ module Noiseless
           body[:mappings] = mappings if mappings
           body[:settings] = settings if settings
 
-          response = put_request("/#{index_name}", body.any? ? JSON.generate(body) : nil)
+          response = put_request("/#{index_name}", body.any? ? dump_json(body) : nil)
           parse_json_response!(response, context: "create index #{index_name}")
         ensure
           response&.close
@@ -86,7 +86,7 @@ module Noiseless
         def execute_index_document(index, id, document, refresh: nil, **_opts)
           path = "/#{index}/_doc/#{id}#{query_string(refresh:)}"
 
-          response = put_request(path, JSON.generate(encode_document(document)))
+          response = put_request(path, dump_json(encode_document(document)))
           parse_json_response!(response, context: "index document #{index}/#{id}")
         ensure
           response&.close
@@ -117,7 +117,7 @@ module Noiseless
         def pit_close_body(pit_id) = { pit_id: [pit_id] }
 
         def execute_search_template(template_id:, params: {}, **_opts)
-          body = JSON.generate(id: template_id, params: params)
+          body = dump_json(id: template_id, params: params)
 
           response = post_request("/_search/template", body)
           parse_json_response!(response, error_class: Noiseless::SearchError, context: "search template #{template_id}")
@@ -129,7 +129,7 @@ module Noiseless
           response = case verb
                      when :get then get_request(path)
                      when :delete then delete_request(path)
-                     else send(:"#{verb}_request", path, body && JSON.generate(body))
+                     else send(:"#{verb}_request", path, body && dump_json(body))
                      end
           parse_json_response!(response, context:)
         ensure

@@ -46,14 +46,14 @@ module Noiseless
         end
 
         def execute_close_pit(pit_id)
-          response = delete_request("/#{pit_path}", JSON.generate(pit_close_body(pit_id)))
+          response = delete_request("/#{pit_path}", dump_json(pit_close_body(pit_id)))
           parse_json_response!(response, context: "close point in time")
         ensure
           response&.close
         end
 
         def execute_pit_search(query_hash)
-          response = post_request("/_search", JSON.generate(query_hash))
+          response = post_request("/_search", dump_json(query_hash))
           parse_json_response!(response, error_class: Noiseless::SearchError, context: "point-in-time search")
         ensure
           response&.close
@@ -64,9 +64,9 @@ module Noiseless
             if action[:index]
               action_line = { index: { _index: action[:index][:_index], _id: action[:index][:_id] } }
               data_line = encode_document(action[:index][:data])
-              "#{JSON.generate(action_line)}\n#{JSON.generate(data_line)}\n"
+              "#{dump_json(action_line)}\n#{dump_json(data_line)}\n"
             else
-              "#{JSON.generate(action)}\n"
+              "#{dump_json(action)}\n"
             end
           end.join
 
@@ -109,7 +109,7 @@ module Noiseless
         end
 
         def execute_update_document(index, id, changes, refresh: nil, **_opts)
-          body = JSON.generate(doc: encode_document(changes))
+          body = dump_json(doc: encode_document(changes))
 
           response = post_request("/#{index}/_update/#{id}#{query_string(refresh:)}", body)
           parse_json_response!(response, context: "update document #{index}/#{id}")
