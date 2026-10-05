@@ -10,6 +10,14 @@ module Noiseless
       module TypesenseExecution
         include HttpTransport
 
+        # Typesense stores date fields as int64, so times travel as epoch seconds.
+        TYPESENSE_JSON = JSON::Coder.new do |object|
+          if object.respond_to?(:to_time) then object.to_time.to_i
+          elsif object.is_a?(BigDecimal) then object.to_f
+          else object.respond_to?(:as_json) ? object.as_json : object.to_s
+          end
+        end
+
         private
 
         def ast_to_hash(ast_node)
@@ -111,17 +119,21 @@ module Noiseless
             next unless node.is_a?(AST::Range)
 
             conditions = []
-            conditions << "#{node.field}:>#{node.gt}" if node.gt
-            conditions << "#{node.field}:>=#{node.gte}" if node.gte
-            conditions << "#{node.field}:<#{node.lt}" if node.lt
-            conditions << "#{node.field}:<=#{node.lte}" if node.lte
+            conditions << "#{node.field}:>#{filter_value(node.gt)}" if node.gt
+            conditions << "#{node.field}:>=#{filter_value(node.gte)}" if node.gte
+            conditions << "#{node.field}:<#{filter_value(node.lt)}" if node.lt
+            conditions << "#{node.field}:<=#{filter_value(node.lte)}" if node.lte
             conditions.join(" && ")
           end
 
           (filters + range_filters).compact.join(" && ")
         end
 
+        def dump_json(object) = TYPESENSE_JSON.dump(object)
+
         def filter_value(value)
+          return value.to_time.to_i.to_s if value.respond_to?(:to_time) && !value.is_a?(String)
+
           case value
           when Array then "[#{value.map { filter_value(it) }.join(',')}]"
           when Numeric, true, false then value.to_s
@@ -164,7 +176,7 @@ module Noiseless
         end
 
         def post_json!(path, body, context:)
-          response = post_request(path, JSON.generate(body))
+          response = post_request(path, dump_json(body))
           parse_json_response!(response, error_class: Noiseless::SearchError, context:)
         ensure
           response&.close
@@ -228,7 +240,7 @@ module Noiseless
         end
 
         def import_documents(collection, pairs, items)
-          jsonl = pairs.map { |action, _| JSON.generate(typesense_document(action[:index][:data], action[:index][:_id])) }.join("\n")
+          jsonl = pairs.map { |action, _| dump_json(typesense_document(collection, action[:index][:data], action[:index][:_id])) }.join("\n")
           response = post_request("/collections/#{collection}/documents/import?action=upsert", jsonl, content_type: "text/plain")
           body = response.read
           unless response.success?
@@ -263,8 +275,26 @@ module Noiseless
           response&.close
         end
 
-        def typesense_document(document, id)
-          document.to_h.transform_keys(&:to_s).merge("id" => id.to_s)
+        def typesense_document(collection, document, id)
+          shape_document(collection, document).merge("id" => id.to_s)
+        end
+
+        def shape_document(collection, document)
+          arrays = array_fields(collection)
+          document.to_h.to_h do |key, value|
+            key = key.to_s
+            [key, arrays.include?(key) && !value.nil? && !value.is_a?(Array) ? [value] : value]
+          end
+        end
+
+        def array_fields(collection)
+          (@array_fields ||= {})[collection.to_s] ||= begin
+            response = get_request("/collections/#{collection}")
+            fields = response.success? ? JSON.parse(response.read).fetch("fields") : []
+            fields.filter_map { it["name"] if it["type"].end_with?("[]") }.to_set
+          ensure
+            response&.close
+          end
         end
 
         def error_message(body, status)
@@ -275,11 +305,12 @@ module Noiseless
         end
 
         def execute_create_index(collection_name, mappings: nil, **_opts)
+          @array_fields&.delete(collection_name.to_s)
           properties = (mappings || {}).with_indifferent_access[:properties] || {}
           fields = properties.map { |name, config| typesense_field(name, config) }
           fields = [{ name: ".*", type: "auto" }] if fields.empty?
 
-          response = post_request("/collections", JSON.generate(name: collection_name, fields:))
+          response = post_request("/collections", dump_json(name: collection_name, fields:))
           result = parse_json_response!(response, context: "create collection #{collection_name}")
 
           { "acknowledged" => true, "index" => result["name"] }
@@ -291,12 +322,13 @@ module Noiseless
           type = map_type_to_typesense(config[:type].to_s)
           field = { name: name.to_s, type: type, optional: true }
           field[:num_dim] = config[:dims] || config[:dimension] if type == "float[]"
-          field[:facet] = true if config[:facet]
+          field[:facet] = true if config[:facet] || config[:type].to_s == "keyword"
           field[:reference] = config[:reference] if config[:reference]
           field
         end
 
         def execute_delete_index(collection_name, **_opts)
+          @array_fields&.delete(collection_name.to_s)
           response = delete_request("/collections/#{collection_name}")
           return { "acknowledged" => true, "result" => "not_found" } if response.status == 404
 
@@ -315,7 +347,7 @@ module Noiseless
 
         def execute_index_document(collection, id, document, **_opts)
           response = post_request("/collections/#{collection}/documents?action=upsert",
-                                  JSON.generate(typesense_document(document, id)))
+                                  dump_json(typesense_document(collection, document, id)))
           result = parse_json_response!(response, context: "index document #{collection}/#{id}")
 
           { "_index" => collection, "_id" => result["id"], "result" => "upserted" }
@@ -324,7 +356,7 @@ module Noiseless
         end
 
         def execute_update_document(collection, id, changes, **_opts)
-          response = patch_request("/collections/#{collection}/documents/#{id}", JSON.generate(changes))
+          response = patch_request("/collections/#{collection}/documents/#{id}", dump_json(shape_document(collection, changes)))
           result = parse_json_response!(response, context: "update document #{collection}/#{id}")
 
           { "_index" => collection, "_id" => result["id"], "result" => "updated" }
@@ -389,6 +421,7 @@ module Noiseless
           when "double", "float", "half_float", "scaled_float" then "float"
           when "boolean" then "bool"
           when "dense_vector", "knn_vector" then "float[]"
+          when "keyword" then "string[]"
           else "string"
           end
         end
