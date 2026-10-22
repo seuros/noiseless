@@ -17,7 +17,7 @@ module Noiseless
       }
 
       # Index models by their search index names
-      index_names = Array(model_class.search_index || default_index_name(model_class))
+      index_names = QueryBuilder.indexes_for(model_class)
       index_names.each do |index_name|
         @models_by_index[index_name.to_sym] ||= []
         @models_by_index[index_name.to_sym] << model_class
@@ -66,12 +66,6 @@ module Noiseless
     def clear!
       @models.clear
       @models_by_index.clear
-    end
-
-    private
-
-    def default_index_name(model_class)
-      model_class.name.demodulize.underscore.pluralize
     end
   end
 end

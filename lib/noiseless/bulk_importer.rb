@@ -157,11 +157,7 @@ module Noiseless
     end
 
     def index_name
-      @index_name ||= if model_class.respond_to?(:search_index)
-                        Array(model_class.search_index).first
-                      else
-                        model_class.name.demodulize.underscore.pluralize
-                      end
+      @index_name ||= QueryBuilder.indexes_for(model_class).first
     end
 
     def recreate_index

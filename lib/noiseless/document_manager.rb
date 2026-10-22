@@ -70,11 +70,7 @@ module Noiseless
     end
 
     def index_name
-      @index_name ||= if model_instance.class.respond_to?(:search_index)
-                        Array(model_instance.class.search_index).first
-                      else
-                        model_instance.class.name.demodulize.underscore.pluralize
-                      end
+      @index_name ||= QueryBuilder.indexes_for(model_instance.class).first
     end
 
     def supports_dirty_tracking?

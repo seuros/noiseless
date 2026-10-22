@@ -61,7 +61,7 @@ module Noiseless
             raw_response,
             model_class: model_class,
             response_type: response_type,
-            query_hash: build_pagination_from_ast(ast_node)
+            query_hash: build_pagination_hash(ast_node.paginate)
           )
         end
       end
@@ -155,16 +155,6 @@ module Noiseless
       rescue StandardError => e
         Rails.logger.error("Failed to detect PostgreSQL extensions: #{e.message}")
         []
-      end
-
-      def build_pagination_from_ast(ast_node)
-        paginate = ast_node.paginate
-        return { from: 0, size: 20 } unless paginate
-
-        {
-          from: (paginate.page - 1) * paginate.per_page,
-          size: paginate.per_page
-        }
       end
     end
   end

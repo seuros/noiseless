@@ -3,6 +3,25 @@
 module Noiseless
   class Model
     extend DSL::ClassMethods
+    extend QueryDelegation
+
+    delegate_query_methods :match, :multi_match, :filter, :range, :sort, :limit, :offset, :paginate,
+                           :aggregation, :geo_distance, :indexes, :remove_duplicates, :facet_sample_slope, :pinned_hits,
+                           to: :@builder
+
+    # Explicit mapping: index names may be aliases, not record class names.
+    # String names are resolved on read so Rails can reload the record class.
+    def self.record_class(value = nil)
+      unless value.nil?
+        raise ArgumentError, "record_class must be a Class or a class name String" unless value.is_a?(Class) || value.is_a?(String)
+
+        return @record_class = value
+      end
+
+      configured = @record_class
+      configured ||= superclass.record_class unless self == Model
+      configured.is_a?(String) ? configured.constantize : configured
+    end
 
     def initialize
       @builder = QueryBuilder.new(self.class)
@@ -21,77 +40,6 @@ module Noiseless
       Sync do
         search(indexes: indexes, connection: connection, response_type: response_type, &).wait
       end
-    end
-
-    # Instance methods that delegate to the query builder
-    def match(field, value, **)
-      @builder.match(field, value, **)
-      self
-    end
-
-    def multi_match(query, fields, **)
-      @builder.multi_match(query, fields, **)
-      self
-    end
-
-    def filter(field, value, **)
-      @builder.filter(field, value, **)
-      self
-    end
-
-    def range(field, gte: nil, lte: nil, gt: nil, lt: nil)
-      @builder.range(field, gte: gte, lte: lte, gt: gt, lt: lt)
-      self
-    end
-
-    def sort(field, direction = :asc, **)
-      @builder.sort(field, direction, **)
-      self
-    end
-
-    def limit(size)
-      @builder.limit(size)
-      self
-    end
-
-    def offset(from)
-      @builder.offset(from)
-      self
-    end
-
-    def paginate(**)
-      @builder.paginate(**)
-      self
-    end
-
-    def aggregation(name, type, **)
-      @builder.aggregation(name, type, **)
-      self
-    end
-
-    def geo_distance(field, lat:, lon:, distance:, **)
-      @builder.geo_distance(field, lat: lat, lon: lon, distance: distance, **)
-      self
-    end
-
-    def indexes(names)
-      @builder.indexes(names)
-      self
-    end
-
-    def remove_duplicates(value: true)
-      @builder.remove_duplicates(value: value)
-      self
-    end
-
-    def facet_sample_slope(value)
-      @builder.facet_sample_slope(value)
-      self
-    end
-
-    def pinned_hits(value)
-      @builder.pinned_hits(value)
-      self
     end
 
     def execute(connection: nil, response_type: nil)
