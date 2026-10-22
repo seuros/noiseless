@@ -2,101 +2,32 @@
 
 module Noiseless
   class MultiSearch
+    extend QueryDelegation
+
+    delegate_query_methods :match, :multi_match, :filter, :sort, :limit, :offset, :aggregation,
+                           :geo_distance, :remove_duplicates, :facet_sample_slope, :pinned_hits,
+                           to: :@builder
+
     def initialize(models: nil, indexes: nil, connection: nil)
       @models = resolve_models(models)
       @indexes = resolve_indexes(indexes)
       @connection = connection || Noiseless.config.default_connection
-      @builder = QueryBuilder.new(nil)
+      @builder = QueryBuilder.new(nil).indexes(@indexes)
     end
 
     def search(&block)
       yield(@builder) if block
 
       client = Noiseless.connections.client(@connection)
-      ast = @builder.to_ast
-
-      # Override indexes in AST with our multi-model indexes
-      ast_with_indexes = AST::Root.new(
-        indexes: @indexes,
-        bool: ast.bool,
-        sort: ast.sort,
-        paginate: ast.paginate,
-        vector: ast.vector,
-        collapse: ast.collapse,
-        search_after: ast.search_after,
-        aggregations: ast.aggregations,
-        hybrid: ast.hybrid,
-        pipeline: ast.pipeline,
-        image_query: ast.image_query,
-        conversation: ast.conversation,
-        joins: ast.joins,
-        remove_duplicates: ast.remove_duplicates,
-        facet_sample_slope: ast.facet_sample_slope,
-        pinned_hits: ast.pinned_hits
-      )
-
-      raw_response = client.search(ast_with_indexes)
-      MultiSearchResponse.new(raw_response, @models, @indexes)
-    end
-
-    # Delegate query building methods to the internal builder
-    def match(field, value, **)
-      @builder.match(field, value, **)
-      self
-    end
-
-    def multi_match(query, fields, **)
-      @builder.multi_match(query, fields, **)
-      self
-    end
-
-    def filter(field, value, **)
-      @builder.filter(field, value, **)
-      self
-    end
-
-    def sort(field, direction = :asc, **)
-      @builder.sort(field, direction, **)
-      self
-    end
-
-    def limit(size)
-      @builder.limit(size)
-      self
-    end
-
-    def offset(from)
-      @builder.offset(from)
-      self
+      ast = @builder.indexes(@indexes).to_ast
+      response = Sync { client.search(ast, response_type: :results).wait }
+      MultiSearchResponse.new(response.response, @models, @indexes).tap do |result|
+        result.include_pagination_info(Pagination.query_options(ast.paginate))
+      end
     end
 
     def paginate(page, per_page)
       @builder.paginate(page: page, per_page: per_page)
-      self
-    end
-
-    def aggregation(name, type, **)
-      @builder.aggregation(name, type, **)
-      self
-    end
-
-    def geo_distance(field, lat:, lon:, distance:, **)
-      @builder.geo_distance(field, lat: lat, lon: lon, distance: distance, **)
-      self
-    end
-
-    def remove_duplicates(value: true)
-      @builder.remove_duplicates(value: value)
-      self
-    end
-
-    def facet_sample_slope(value)
-      @builder.facet_sample_slope(value)
-      self
-    end
-
-    def pinned_hits(value)
-      @builder.pinned_hits(value)
       self
     end
 
@@ -125,9 +56,7 @@ module Noiseless
     def resolve_indexes(indexes)
       case indexes
       when nil
-        @models.flat_map do |model|
-          Array(model.search_index || default_index_name(model))
-        end.uniq
+        @models.flat_map { |model| QueryBuilder.indexes_for(model) }.uniq
       when Array
         indexes.map(&:to_s)
       when String, Symbol
@@ -135,10 +64,6 @@ module Noiseless
       else
         []
       end
-    end
-
-    def default_index_name(model_class)
-      model_class.name.demodulize.underscore.pluralize
     end
   end
 
@@ -149,6 +74,10 @@ module Noiseless
       @models = models
       @indexes = indexes
       @results_by_model = nil
+      @models_by_index = {}
+      models.each do |model|
+        QueryBuilder.indexes_for(model).each { |index| @models_by_index[index] ||= model }
+      end
     end
 
     def each(&)
@@ -203,17 +132,8 @@ module Noiseless
     end
 
     def determine_model_class(hit)
-      index_name = hit["_index"]
-
-      # First, try to find models registered for this specific index
-      models_for_index = Noiseless.registry.models_for_index(index_name)
-      return models_for_index.first if models_for_index.size == 1
-
-      # If multiple models or none found, try to infer from index name
-      @models.find do |model|
-        model_indexes = Array(model.search_index || default_index_name(model))
-        model_indexes.include?(index_name)
-      end
+      # Only group into requested models, using the same index rules as search.
+      @models_by_index[hit["_index"]]
     end
 
     def load_records_by_model
@@ -221,22 +141,14 @@ module Noiseless
 
       results_by_model.each do |model_key, model_hits|
         model_class = @models.find { |m| m.name.to_sym == model_key }
-        next unless model_class.respond_to?(:where)
+        record_class = RecordClassResolver.resolve(model_class)
+        next unless record_class.respond_to?(:where)
 
-        ids = model_hits.map { |hit| hit["_id"] }
-        records_by_id = model_class.where(id: ids).index_by { it.id.to_s }
-
-        # Sort by search relevance
-        sorted_records = model_hits.filter_map { |hit| records_by_id[hit["_id"].to_s] }
-
-        records[model_key] = sorted_records
+        raw = { "hits" => { "hits" => model_hits, "total" => model_hits.size } }
+        records[model_key] = Response::Records.new(raw, record_class).to_a
       end
 
       records
-    end
-
-    def default_index_name(model_class)
-      model_class.name.demodulize.underscore.pluralize
     end
   end
 end

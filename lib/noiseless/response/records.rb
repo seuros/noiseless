@@ -4,7 +4,12 @@ module Noiseless
   module Response
     class Records < Base
       def initialize(raw_response, model_class)
-        super
+        record_class = RecordClassResolver.resolve(model_class)
+        unless record_class.respond_to?(:where)
+          raise ArgumentError, "#{model_class || 'nil'} cannot load records; configure record_class on your Noiseless::Model search class"
+        end
+
+        super(raw_response, record_class)
         @records = nil
         @record_hit_map = nil
       end
@@ -62,7 +67,7 @@ module Noiseless
       end
 
       def load_records
-        return [] if hits.empty? || !model_class.respond_to?(:where)
+        return [] if hits.empty?
 
         # Extract IDs from hits
         ids = hits.map { |hit| hit["_id"] }

@@ -189,9 +189,8 @@ module Noiseless
         # Helper methods
 
         def resolve_model(indexes, model_class = nil)
-          # The standard Model#execute path passes the Noiseless::Model search
-          # class here; only an ActiveRecord model can back a PG search, so
-          # fall through to index-name resolution for anything else.
+          # Respect explicit search-class mappings, including aliased indexes.
+          model_class = RecordClassResolver.resolve(model_class)
           return model_class if active_record_model?(model_class)
 
           index_name = indexes&.first

@@ -2,9 +2,19 @@
 
 module Noiseless
   class QueryBuilder
+    def self.indexes_for(model)
+      # Multi-search starts without a model and supplies its own indexes.
+      return [] if model.nil?
+
+      return Array(model.search_index) if model.respond_to?(:search_index) && model.search_index&.any?
+      return [model.index_name] if model.respond_to?(:index_name) && model.index_name
+
+      [model.name.demodulize.underscore.pluralize]
+    end
+
     def initialize(model)
       @model        = model
-      @indexes      = determine_indexes(model)
+      @indexes      = self.class.indexes_for(model)
       @nodes        = []
       @aggregations = []
       @collapse     = nil
@@ -269,17 +279,6 @@ module Noiseless
       else
         raise ArgumentError, "pinned_hits must be a String, Hash, or Array of [id, position]"
       end
-    end
-
-    def determine_indexes(model)
-      # Check for search_index (plural array) first
-      return Array(model.search_index) if model.respond_to?(:search_index) && model.search_index&.any?
-
-      # Check for index_name (singular string) next
-      return [model.index_name] if model.respond_to?(:index_name) && model.index_name
-
-      # Fallback to pluralized model name
-      [model.name.demodulize.underscore.pluralize]
     end
   end
 end

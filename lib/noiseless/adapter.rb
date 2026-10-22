@@ -227,12 +227,7 @@ module Noiseless
     end
 
     def build_pagination_hash(paginate_node)
-      return { from: 0, size: 20 } unless paginate_node
-
-      {
-        from: (paginate_node.page - 1) * paginate_node.per_page,
-        size: paginate_node.per_page
-      }
+      Pagination.query_options(paginate_node)
     end
 
     # Parses a backend HTTP response, raising when the backend reported an error.

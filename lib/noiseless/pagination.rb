@@ -5,6 +5,12 @@ module Noiseless
     DEFAULT_PER_PAGE = 20
     MAX_PER_PAGE = 100
 
+    def self.query_options(paginate)
+      return { from: 0, size: DEFAULT_PER_PAGE } unless paginate
+
+      { from: (paginate.page - 1) * paginate.per_page, size: paginate.per_page }
+    end
+
     # Simple paginated array wrapper - no external dependencies
     class PaginatedArray < Array
       attr_accessor :current_page, :per_page, :total_count
@@ -131,6 +137,10 @@ module Noiseless
     # Search paginator - builds and executes paginated queries
     class SearchPaginator
       include Enumerable
+      extend QueryDelegation
+
+      delegate_query_methods :match, :multi_match, :filter, :sort, :aggregation, :geo_distance, :vector,
+                             to: :@query_builder
 
       def initialize(model_class, page: 1, per_page: nil)
         @model_class = model_class
@@ -213,42 +223,6 @@ module Noiseless
         @results.to_a
       end
 
-      # Query building delegation
-      def match(field, value, **)
-        @query_builder.match(field, value, **)
-        self
-      end
-
-      def multi_match(query, fields, **)
-        @query_builder.multi_match(query, fields, **)
-        self
-      end
-
-      def filter(field, value, **)
-        @query_builder.filter(field, value, **)
-        self
-      end
-
-      def sort(field, direction = :asc, **)
-        @query_builder.sort(field, direction, **)
-        self
-      end
-
-      def aggregation(name, type, **)
-        @query_builder.aggregation(name, type, **)
-        self
-      end
-
-      def geo_distance(field, lat:, lon:, distance:, **)
-        @query_builder.geo_distance(field, lat: lat, lon: lon, distance: distance, **)
-        self
-      end
-
-      def vector(field, embedding, **)
-        @query_builder.vector(field, embedding, **)
-        self
-      end
-
       # Response access
       def results
         execute_search unless @executed
@@ -312,7 +286,7 @@ module Noiseless
 
         client = Noiseless.connections.client(@model_class.connection)
         ast = @query_builder.to_ast
-        @results = client.search(ast, model_class: @model_class)
+        @results = Sync { client.search(ast, model_class: @model_class).wait }
         @total_count = @results.total
         @executed = true
       end

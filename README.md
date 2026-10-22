@@ -114,6 +114,51 @@ end
 
 For best performance, run independent searches concurrently within a single `Async` block rather than creating separate `Sync` blocks per search.
 
+### Loading Database Records
+
+Search classes return search results by default. To load database records, configure
+the record model explicitly and request `response_type: :records`:
+
+```ruby
+class Company::Search < Noiseless::Model
+  index_name 'companies'
+  record_class 'Company' # A Class is also accepted; strings resolve lazily.
+end
+
+records = Company::Search.search_sync(response_type: :records) do |s|
+  s.match(:name, 'tech')
+end
+records.to_a # Company records in search relevance order
+
+# The instance API supports the same option.
+Company::Search.new.match(:name, 'tech').execute_sync(response_type: :records)
+```
+
+`record_class` is inherited and does not change the default response type. Index
+names are not used to infer record classes: aliases and versioned indexes need
+not match table names. Requesting `:records` without a model supporting `.where`
+raises `ArgumentError`, even when the search has no hits. Records missing from
+the database are omitted; search totals still describe backend hits.
+
+### Pagination and Multi-model Search
+
+The paginator executes lazily and waits for its response when results or totals
+are accessed. Multi-search also waits and returns a `MultiSearchResponse`, not
+an `Async::Task`. Both work inside an existing async context.
+
+```ruby
+page = Company::Search.page(2).per(10)
+page.to_a
+page.total_count
+
+response = Noiseless.multi_search(models: [Company::Search, Product::Search]) do |s|
+  s.match(:name, 'tech')
+  s.limit(10)
+end
+response.results_for_model(Company::Search)
+response.records_for_model(Company::Search) # Uses its configured record_class.
+```
+
 ### Advanced Queries
 
 ```ruby
@@ -178,6 +223,15 @@ end
 ```
 
 ### Running Tests Locally
+
+Run the pagination, multi-search, and record-loading unit tests without services:
+
+```bash
+bundle exec ruby -Itest -Ilib -e 'ARGV.each { require_relative it }' \
+  test/{search_pagination,multi_search,record_response,active_record_response,postgresql_search_contract,query_contract}_test.rb
+```
+
+For the full integration suite:
 
 ```bash
 docker compose up -d postgres elasticsearch opensearch typesense
