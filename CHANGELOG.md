@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/seuros/noiseless/compare/noiseless/v0.8.0...noiseless/v0.9.0) (2026-10-22)
+
+
+### Features
+
+* **search:** add record-class mapping and repair search execution ([#21](https://github.com/seuros/noiseless/issues/21)) ([efe8db0](https://github.com/seuros/noiseless/commit/efe8db06238930ebc050f4292cde3552ecc0ad85)), closes [#18](https://github.com/seuros/noiseless/issues/18) [#19](https://github.com/seuros/noiseless/issues/19) [#20](https://github.com/seuros/noiseless/issues/20)
+
 ## [0.8.0](https://github.com/seuros/noiseless/compare/noiseless/v0.7.2...noiseless/v0.8.0) (2026-10-05)
 
 
